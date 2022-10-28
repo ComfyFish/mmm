@@ -1,0 +1,22 @@
+{
+  "name": "mmm",
+  "productName": "Mushi Menu Maker",
+  "version": "0.1.0",
+  "description": "Early test version of Mushi's Menu Maker for RMMZ.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "package-win": "electron-packager . vfmm --overwrite --asar --platform=win32 --arch=x64 --icon=assets/icon/win/app.ico --prune=true --out=release-builds --version-string.CompanyName=CE --version-string.FileDescription=CE --version-string.ProductName=\"Mushi Menu Maker\""
+  },
+  "keywords": [],
+  "author": "Mushi",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^12.0.9",
+    "electron-packager": "^15.2.0"
+  },
+  "dependencies": {
+    "simplebar": "^5.3.6"
+  }
+}

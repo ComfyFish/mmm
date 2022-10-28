@@ -1,0 +1,28 @@
+{"frames": {
+
+"stage-control-handle-hover.png":
+{
+	"frame": {"x":0,"y":0,"w":41,"h":41},
+	"rotated": false,
+	"trimmed": false,
+	"spriteSourceSize": {"x":0,"y":0,"w":41,"h":41},
+	"sourceSize": {"w":41,"h":41}
+},
+"stage-control-handle.png":
+{
+	"frame": {"x":41,"y":0,"w":41,"h":41},
+	"rotated": false,
+	"trimmed": false,
+	"spriteSourceSize": {"x":0,"y":0,"w":41,"h":41},
+	"sourceSize": {"w":41,"h":41}
+}},
+"meta": {
+	"app": "https://www.codeandweb.com/texturepacker",
+	"version": "1.0",
+	"image": "spritesheet.png",
+	"format": "RGBA8888",
+	"size": {"w":82,"h":41},
+	"scale": "1",
+	"smartupdate": "$TexturePacker:SmartUpdate:e1093493fa9cea92cc0c9124709edac1:ab7aee66b84878173e2f7470491fc6f0:729adc6043343cfda41c447ce8f464d6$"
+}
+}
