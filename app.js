@@ -39,7 +39,7 @@ class inputManager {
     }
 
     addKey(type, value) {
-        this.key_list.push(registerKey(type, value));
+        this.key_list.push(this.registerKey(type, value));
         //console.log(this.key_list);
         return this.key_list.length - 1;
     }
@@ -108,68 +108,68 @@ class inputManager {
         this.registerPressFunction("a", keyPressTest);
         this.registerHoldFunction("a", keyPressTest);
     }
-}
 
-function registerKey(type, value) {
-    var key = {};
-    key.value = value;
-    key.isDown = false;
-    key.isUp = true;
-    key.press = undefined;
-    key.release = undefined;
-    key.pressfunc = undefined;
-    key.releasefunc = undefined;
-    key.holdfunc = undefined;
-    // The `downHandler`
-    key.downHandler = event => {
-        var check;
-        if (type == "keyboard") { check = event.key; } 
-        else if (type == "mouse") { check = event.button; }
-        if (check === key.value) {
-            if (key.isUp && key.press) key.press();
-            key.isDown = true;
-            key.isUp = false;
-            event.preventDefault();
+    registerKey(type, value) {
+        var key = {};
+        key.value = value;
+        key.isDown = false;
+        key.isUp = true;
+        key.press = undefined;
+        key.release = undefined;
+        key.pressfunc = undefined;
+        key.releasefunc = undefined;
+        key.holdfunc = undefined;
+        // The `downHandler`
+        key.downHandler = event => {
+            var check;
+            if (type == "keyboard") { check = event.key; } 
+            else if (type == "mouse") { check = event.button; }
+            if (check === key.value) {
+                if (key.isUp && key.press) key.press();
+                key.isDown = true;
+                key.isUp = false;
+                event.preventDefault();
+            }
+        };
+      
+        // The `upHandler`
+        key.upHandler = event => {
+            var check;
+            if (type == "keyboard") { check = event.key; } 
+            else if (type == "mouse") { check = event.button; }
+            if (check === key.value) {
+                if (key.isDown && key.release) key.release();
+                key.isDown = false;
+                key.isUp = true;
+                event.preventDefault();
+            }
+        };
+      
+        // Attach event listeners
+        const downListener = key.downHandler.bind(key);
+        const upListener = key.upHandler.bind(key);
+        
+        if (type == "keyboard") {
+            window.addEventListener("keydown", downListener, false);
+            window.addEventListener("keyup", upListener, false);
+        } else if (type == "mouse") {
+            window.addEventListener("mousedown", downListener, false);
+            window.addEventListener("mouseup", upListener, false);
         }
-    };
-  
-    // The `upHandler`
-    key.upHandler = event => {
-        var check;
-        if (type == "keyboard") { check = event.key; } 
-        else if (type == "mouse") { check = event.button; }
-        if (check === key.value) {
-            if (key.isDown && key.release) key.release();
-            key.isDown = false;
-            key.isUp = true;
-            event.preventDefault();
-        }
-    };
-  
-    // Attach event listeners
-    const downListener = key.downHandler.bind(key);
-    const upListener = key.upHandler.bind(key);
-    
-    if (type == "keyboard") {
-        window.addEventListener("keydown", downListener, false);
-        window.addEventListener("keyup", upListener, false);
-    } else if (type == "mouse") {
-        window.addEventListener("mousedown", downListener, false);
-        window.addEventListener("mouseup", upListener, false);
+        
+        // Detach event listeners
+        key.unsubscribe = () => {
+            if (typeof key.value === 'string' || key.value instanceof String) {
+                window.removeEventListener("keydown", downListener);
+                window.removeEventListener("keyup", upListener);
+            } else {
+                window.removeEventListener("mousedown", downListener);
+                window.removeEventListener("mouseup", upListener);
+            }
+        };
+        
+        return key;
     }
-    
-    // Detach event listeners
-    key.unsubscribe = () => {
-        if (typeof key.value === 'string' || key.value instanceof String) {
-            window.removeEventListener("keydown", downListener);
-            window.removeEventListener("keyup", upListener);
-        } else {
-            window.removeEventListener("mousedown", downListener);
-            window.removeEventListener("mouseup", upListener);
-        }
-    };
-    
-    return key;
 }
 // ------------------------------------------------------------
 
