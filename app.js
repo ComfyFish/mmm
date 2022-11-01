@@ -36,6 +36,9 @@ class inputManager {
         this.key_list = [];
         this.key_ctrl = -1;
         this.registerDefaultKeys();
+        this.mouse_pos = {x:0, y:0, sx:0, sy:0};
+        this.click_pos = {x:0, y:0, sx:0, sy:0};
+        this.store_pos = {x:0, y:0};
     }
 
     addKey(type, value) {
@@ -96,7 +99,7 @@ class inputManager {
                 }
             }
         }
-        //mouseHoverCheck();
+        this.updateMousePos();
     }
 
     isPressed(key) {
@@ -106,7 +109,11 @@ class inputManager {
     registerDefaultKeys() {
         this.addKey("keyboard", "a");
         this.registerPressFunction("a", keyPressTest);
-        this.registerHoldFunction("a", keyPressTest);
+        //this.registerHoldFunction("a", keyPressTest);
+
+        this.addKey("mouse", 1);
+        this.registerPressFunction(1, mbMiddlePress);
+        this.registerHoldFunction(1, mbMiddleHold);
     }
 
     registerKey(type, value) {
@@ -170,6 +177,35 @@ class inputManager {
         
         return key;
     }
+
+    updateMousePos() {
+        // Update global mouse position
+        this.mouse_pos.x = renderer.plugins.interaction.mouse.global.x;
+        this.mouse_pos.y = renderer.plugins.interaction.mouse.global.y;
+
+        // Update pixi stage mouse position
+        this.mouse_pos.sx = this.mouse_pos.x - stage.x;
+        this.mouse_pos.sy = this.mouse_pos.y - stage.y;
+    }
+
+    updateClickPos() {
+        this.click_pos.x  = this.mouse_pos.x;
+        this.click_pos.y  = this.mouse_pos.y;
+        this.click_pos.sx = this.mouse_pos.sx;
+        this.click_pos.sy = this.mouse_pos.sy;
+    }
+
+    distanceToClick() {
+        var dist = {x:0, y:0};
+        dist.x = this.mouse_pos.x - this.click_pos.x;
+        dist.y = this.mouse_pos.y - this.click_pos.y;
+        return dist;
+    }
+
+    storePos(x, y) {
+        this.store_pos.x = x;
+        this.store_pos.y = y;
+    }
 }
 // ------------------------------------------------------------
 
@@ -178,6 +214,18 @@ class inputManager {
 // ------------------------------------------------------------
 function keyPressTest(key) {
     console.log("Key " + key + " pressed!");
+    console.log("Mouse X: " + input.mouse_pos.x + " Mouse Y: " + input.mouse_pos.y);
+}
+
+function mbMiddlePress() {
+    input.updateClickPos();
+    input.storePos(stage.x, stage.y);
+}
+
+function mbMiddleHold() {
+    var dist = input.distanceToClick();
+    stage.x = input.store_pos.x + dist.x;
+    stage.y = input.store_pos.y + dist.y;
 }
 // ------------------------------------------------------------
 
@@ -842,6 +890,7 @@ window.onload = function() {
 // MAIN LOOP
 // ------------------------------------------------------------
 function update() {
+    input.update();
     renderer.render(stage);
     requestAnimationFrame(() => update()); // Do it again
 }
