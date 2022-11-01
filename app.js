@@ -15,6 +15,7 @@ const loader = PIXI.Loader.shared;
 const img_path = "assets/img/";
 
 var input = null;
+var action = null;
 var renderer = null;
 var stage = null;
 var project = null;
@@ -114,6 +115,7 @@ class inputManager {
         this.addKey("mouse", 1);
         this.registerPressFunction(1, mbMiddlePress);
         this.registerHoldFunction(1, mbMiddleHold);
+        this.registerReleaseFunction(1, mbMiddleRelease);
     }
 
     registerKey(type, value) {
@@ -218,14 +220,85 @@ function keyPressTest(key) {
 }
 
 function mbMiddlePress() {
-    input.updateClickPos();
-    input.storePos(stage.x, stage.y);
+    if (action.noAction()) { 
+        action.setAction("pan_viewport");
+        input.updateClickPos();
+        input.storePos(stage.x, stage.y);
+    }
 }
 
 function mbMiddleHold() {
-    var dist = input.distanceToClick();
-    stage.x = input.store_pos.x + dist.x;
-    stage.y = input.store_pos.y + dist.y;
+    if (action.checkAction("pan_viewport"))
+        var dist = input.distanceToClick();
+        stage.x = input.store_pos.x + dist.x;
+        stage.y = input.store_pos.y + dist.y;
+}
+
+function mbMiddleRelease() {
+    console.log(action.action);
+    action.clearAction();
+}
+
+
+// ------------------------------------------------------------
+
+// ------------------------------------------------------------
+// Action System: 
+//   Handles interactive actions, tools, and history states
+// ------------------------------------------------------------
+class actionSystem {
+    constructor() {
+        this.initialize(...arguments);
+    }
+
+    initialize() {
+        this.action = {name:"", store:false, obj:null};
+        this.tool = null;
+        this.history = [];
+    }
+
+    setAction(action) {
+        this.action.name = action;
+    }
+
+    checkAction(action) {
+        return this.action.name == action;
+    }
+
+    actionAddObj(obj) {
+        this.action.obj = obj;
+    }
+
+    clearAction() {
+        if (this.action.name != "" && this.action.store) {
+            this.history.push(this.action);
+        }
+        this.action = {name:"", store:false, obj:null};
+    }
+
+    noAction() {
+        console.log(this.action.name == "");
+        return this.action.name == "";
+    }
+
+    setTool(tool) {
+        this.tool = tool;
+    }
+
+    checkTool(tool) {
+        return this.tool == tool;
+    }
+
+    clearTool() {
+        this.tool = null
+    }
+
+    undoAction() {
+        if (this.history.length > 0) {
+            var act = this.history.pop();
+            // Undo the action and stuff
+        }
+    }
 }
 // ------------------------------------------------------------
 
@@ -734,7 +807,11 @@ class UISystem {
 // ------------------------------------------------------------
 
 function select_move_tool() {
-    console.log("Move tool selected!");
+    action.setTool("move_tool");
+}
+
+function select_draw_tool() {
+    action.setTool("draw_tool");
 }
 
 // ------------------------------------------------------------
@@ -873,6 +950,7 @@ window.onload = function() {
 
     // Input system
     input = new inputManager();
+    action = new actionSystem();
 
     // Project
     project = new projectSystem();
