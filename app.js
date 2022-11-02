@@ -806,6 +806,30 @@ class UISystem {
 }
 // ------------------------------------------------------------
 
+// ------------------------------------------------------------
+// UI Button Functions
+//   Functions used by ui buttons
+// ------------------------------------------------------------
+function closeWindow() {
+    ipc.send('closeApp');
+}
+
+function maximizeWindow() {
+    ipc.send('maximizeApp');
+}
+
+function minimizeWindow() {
+    ipc.send('minimizeApp');
+}
+
+function openSettings() {
+    // Call the settings window and stuff
+}
+
+function openMenu() {
+    // Call the menu and stuff
+}
+
 function select_move_tool() {
     action.setTool("move_tool");
 }
@@ -813,6 +837,7 @@ function select_move_tool() {
 function select_draw_tool() {
     action.setTool("draw_tool");
 }
+// ------------------------------------------------------------
 
 // ------------------------------------------------------------
 // Create Main UI
@@ -835,31 +860,31 @@ function createUI() {
     ui.setPos(btn_close, "right", "10px", "top", "10px");
     ui.setSize(btn_close, "37px", "37px");
     ui.setImage(btn_close, "titlebar-close.svg");
-    ui.makeButton(btn_close, null);
+    ui.makeButton(btn_close, closeWindow);
 
     var btn_max = ui.createElement("btn_max", ui.getElement(titlebar), "img");
     ui.setPos(btn_max, "right", "50px", "top", "10px");
     ui.setSize(btn_max, "37px", "37px");
     ui.setImage(btn_max, "titlebar-max.svg");
-    ui.makeButton(btn_max, null);
+    ui.makeButton(btn_max, maximizeWindow);
 
     var btn_min = ui.createElement("btn_min", ui.getElement(titlebar), "img");
     ui.setPos(btn_min, "right", "90px", "top", "10px");
     ui.setSize(btn_min, "37px", "37px");
     ui.setImage(btn_min, "titlebar-min.svg");
-    ui.makeButton(btn_min, null);
+    ui.makeButton(btn_min, minimizeWindow);
 
     var btn_settings = ui.createElement("btn_settings", ui.getElement(titlebar), "img");
     ui.setPos(btn_settings, "right", "160px", "top", "10px");
     ui.setSize(btn_settings, "37px", "37px");
     ui.setImage(btn_settings, "titlebar-settings.svg");
-    ui.makeButton(btn_settings, null);
+    ui.makeButton(btn_settings, openSettings);
 
     var btn_menu = ui.createElement("btn_menu", ui.getElement(titlebar), "img");
     ui.setPos(btn_menu, "left", "90px", "top", "10px");
     ui.setSize(btn_menu, "37px", "37px");
     ui.setImage(btn_menu, "titlebar-menu.svg");
-    ui.makeButton(btn_menu, null);
+    ui.makeButton(btn_menu, openMenu);
 
     var title_text = ui.createElement("title_text", ui.getElement(titlebar), "div");
     ui.setPos(title_text, "left", "138px", "top", "17px");
