@@ -716,6 +716,29 @@ class UISystem {
         this.element[element].style.backgroundColor = color;
     }
 
+    setBorderRadius(element, radius) {
+        this.element[element].style.borderRadius = radius;
+    }
+
+    setScroll(element, scroll) {
+        if (scroll) {
+            this.element[element].style.overflow = "hidden";
+        } else {
+            this.element[element].style.overflow = "visible";
+        }
+    }
+
+    setAnim(element, anim) {
+        this.element[element].style.transition = anim;
+    }
+
+    setPanelStyle(element) {
+        this.setBgColor(element, "#1a1d2e")
+        this.setBorderRadius(element, "10px");
+        this.setScroll(element, true);
+        this.setAnim(element, "height 0.2s ease-out");
+    }
+
     addText(element, text, font, font_size, color) {
         this.element[element].innerText = text;
         this.element[element].style.fontFamily = font;
@@ -802,6 +825,84 @@ class UISystem {
                 }
             }
         }
+    }
+}
+// ------------------------------------------------------------
+
+// ------------------------------------------------------------
+// Layer System:
+//   Handles layers and stuff
+// ------------------------------------------------------------
+class layerSystem {
+    constructor() {
+        this.initialize(...arguments);
+    }
+
+    initialize() {
+        this.width = 300;
+        this.height = 400;
+        this.layers_panel = null;
+        this.layers_panel_content = null;
+
+        this.createUI();
+    }
+
+    createUI() {
+        this.layers_panel = ui.createElement("layers_panel", document.body, "div");
+        ui.setPos(this.layers_panel, "right", "26px", "top", "86px");
+        ui.setSize(this.layers_panel, this.width + "px", this.height + "px");
+        ui.setPanelStyle(this.layers_panel);
+
+        // Title
+        var layers_panel_title = ui.createElement("lp_title", ui.getElement(this.layers_panel), "div");
+        ui.setPos(layers_panel_title, "left", "24px", "top", "20px");
+        ui.addText(layers_panel_title, "LAYERS", "RBold", "14pt", "#a0aec0");
+
+        var btn_layers_panel = ui.createElement("btn_window_layers", ui.getElement(this.layers_panel), "div");
+        ui.setPos(btn_layers_panel, "right", "0px", "top", "0px");
+        ui.setSize(btn_layers_panel, this.width + "px", "58px");
+        ui.makeButton(btn_layers_panel, null);
+
+        var layers_dropdown = ui.createElement("layers_dropdown", ui.getElement(this.layers_panel), "img");
+        ui.setPos(layers_dropdown, "right", "20px", "top", "20px");
+        ui.setSize(layers_dropdown, "20px", "20px");
+        ui.setImage(layers_dropdown, "layers-title-open.svg");
+
+        // Content
+        this.layers_panel_content = ui.createElement("lp_content", ui.getElement(this.layers_panel), "div");
+        ui.setPos(this.layers_panel_content, "left", "0px", "top", "58px");
+        ui.setSize(this.layers_panel_content, "100%", this.height - 58 - 49 + "px");
+        new SimpleBar(ui.getElement(this.layers_panel_content));
+        this.layers_panel_content = document.getElementsByClassName("simplebar-content")[0];
+
+        // Bottom Buttons
+        var btn_new_group = ui.createElement("btn_new_group", ui.getElement(this.layers_panel), "img");
+        ui.setPos(btn_new_group, "left", "14px", "top", this.height - 40 + "px");
+        ui.setSize(btn_new_group, "28px", "28px");
+        ui.setImage(btn_new_group, "layers-new-group.svg");
+        ui.makeButton(btn_new_group, null);
+
+        var btn_new_scene = ui.createElement("btn_new_scene", ui.getElement(this.layers_panel), "img");
+        ui.setPos(btn_new_scene, "left", "46px", "top", this.height - 40 + "px");
+        ui.setSize(btn_new_scene, "28px", "28px");
+        ui.setImage(btn_new_scene, "layers-new-scene.svg");
+        ui.makeButton(btn_new_scene, null);
+
+        var btn_delete_layer = ui.createElement("btn_new_scene", ui.getElement(this.layers_panel), "img");
+        ui.setPos(btn_delete_layer, "right", "14px", "top", this.height - 40 + "px");
+        ui.setSize(btn_delete_layer, "28px", "28px");
+        ui.setImage(btn_delete_layer, "layers-delete.svg");
+        ui.makeButton(btn_delete_layer, null);
+        // Bottom buttons
+        //this.btn_new_group = uiCreateButton("btn_new_group", "layers-new-group.svg", createNewGroup, this.window_layers);
+        //uiStyle("btn_new_group", "left", "14px", "top", this.height - 40 + "px", "28px", "28px", "");
+        //this.btn_new_group.style.transition = "top 0.0s ease-out";
+        //this.btn_new_scene = uiCreateButton("btn_new_scene", "layers-new-scene.svg", createNewScene, this.window_layers);
+        //uiStyle("btn_new_scene", "left", "46px", "top", this.height - 40 + "px", "28px", "28px", "");
+        //this.btn_new_scene.style.transition = "top 0.0s ease-out";
+        //this.btn_delete_layer = uiCreateButton("btn_delete_layer", "layers-delete.svg", deleteLayer, this.window_layers);
+        //uiStyle("btn_delete_layer", "right", "14px", "top", this.height - 40 + "px", "28px", "28px", "");
+        //this.btn_delete_layer.style.transition = "top 0.0s ease-out";
     }
 }
 // ------------------------------------------------------------
@@ -911,8 +1012,10 @@ function createUI() {
     ui.setPos(btn_tool_draw, "left", "14px", "top", "203px");
     ui.setSize(btn_tool_draw, "50px", "50px");
     ui.setImage(btn_tool_draw, "sidebar-tool-draw.svg");
-    ui.makeButton(btn_tool_draw, null);
+    ui.makeButton(btn_tool_draw, select_draw_tool);
     ui.setButtonGroup(btn_tool_draw, 1);
+
+    ui.pressButton(btn_tool_move);
 }
 // ------------------------------------------------------------
 
@@ -971,7 +1074,6 @@ function spriteSheetSetup() {
 window.onload = function() {
     // Main UI
     ui = new UISystem();
-    createUI();
 
     // Input system
     input = new inputManager();
@@ -980,9 +1082,14 @@ window.onload = function() {
     // Project
     project = new projectSystem();
 
+    createUI();
+
     // Pixi workspace
     createRenderer();
     render_grid = new gridSystem();
+
+    // Layers
+    layers = new layerSystem();
 
     // Main update loop
     update();
