@@ -313,7 +313,7 @@ class actionSystem {
 // ------------------------------------------------------------
 // Grid System: 
 //   Pixi-related rendering of the grid and various selection
-// control handles in pixi
+//   control handles in pixi
 // ------------------------------------------------------------
 class gridSystem {
     constructor() {
@@ -789,7 +789,6 @@ class UISystem {
         var found = -1;
         for (var i = 0; i < this.button.length; i++) {
             if (this.button[i][btn.ele] == element) {
-                console.log(this.button[i][btn.ele]);
                 found = i;
                 break;
             }
@@ -838,7 +837,6 @@ class UISystem {
 
     buttonSetImage(element, img_element) {
         var button = this.findButton(element);
-        console.log(button);
         if (button != -1) {
             this.button[button][btn.iel] = this.element[img_element];
             this.button[button][btn.img] = this.element[img_element].src;
@@ -848,10 +846,11 @@ class UISystem {
 // ------------------------------------------------------------
 
 // ------------------------------------------------------------
-// Layer System:
-//   Handles layers and stuff
+// Panel System:
+//   Manages layer panel and properties panel, 
+//   and their functions
 // ------------------------------------------------------------
-class layerSystem {
+class panelSystem {
     constructor() {
         this.initialize(...arguments);
     }
@@ -859,62 +858,91 @@ class layerSystem {
     initialize() {
         this.width = 300;
         this.height = 400;
-        this.layers_panel = null;
-        this.layers_panel_content = null;
-        this.layers_panel_open = true;
+        this.layer_panel = null;
+        this.layer_panel_content = null;
+        this.layer_panel_open = true;
         this.prop_panel_open = true;
+        this.prop_panel_content = null;
 
         this.createUI();
     }
 
     createUI() {
-        this.layers_panel = ui.createElement("layers_panel", document.body, "div");
-        ui.setPos(this.layers_panel, "right", "26px", "top", "86px");
-        ui.setSize(this.layers_panel, this.width + "px", this.height + "px");
-        ui.setPanelStyle(this.layers_panel);
+        // Layer Panel
+        this.layer_panel = ui.createElement("layer_panel", document.body, "div");
+        ui.setPos(this.layer_panel, "right", "26px", "top", "86px");
+        ui.setSize(this.layer_panel, this.width + "px", this.height + "px");
+        ui.setPanelStyle(this.layer_panel);
 
-        // Title
-        var layers_panel_title = ui.createElement("lp_title", ui.getElement(this.layers_panel), "div");
-        ui.setPos(layers_panel_title, "left", "24px", "top", "20px");
-        ui.addText(layers_panel_title, "LAYERS", "RBold", "14pt", "#a0aec0");
+        var layer_panel_title = ui.createElement("lp_title", ui.getElement(this.layer_panel), "div");
+        ui.setPos(layer_panel_title, "left", "24px", "top", "20px");
+        ui.addText(layer_panel_title, "LAYERS", "RBold", "14pt", "#a0aec0");
 
-        var btn_layers_panel = ui.createElement("btn_layers_panel", ui.getElement(this.layers_panel), "div");
-        ui.setPos(btn_layers_panel, "right", "0px", "top", "0px");
-        ui.setSize(btn_layers_panel, this.width + "px", "58px");
-        ui.makeButton(btn_layers_panel, null);
+        var btn_layer_panel = ui.createElement("btn_layer_panel", ui.getElement(this.layer_panel), "div");
+        ui.setPos(btn_layer_panel, "right", "0px", "top", "0px");
+        ui.setSize(btn_layer_panel, this.width + "px", "58px");
+        ui.makeButton(btn_layer_panel, toggleLayerPanel);
 
-        var layers_dropdown = ui.createElement("layers_dropdown", ui.getElement(btn_layers_panel), "img");
-        ui.setPos(layers_dropdown, "right", "20px", "top", "20px");
-        ui.setSize(layers_dropdown, "20px", "20px");
-        ui.setImage(layers_dropdown, "layers-title-open.svg");
-        console.log(btn_layers_panel);
-        ui.buttonSetImage(btn_layers_panel, layers_dropdown);
+        var layer_dropdown = ui.createElement("layer_dropdown", ui.getElement(btn_layer_panel), "img");
+        ui.setPos(layer_dropdown, "right", "20px", "top", "20px");
+        ui.setSize(layer_dropdown, "20px", "20px");
+        ui.setImage(layer_dropdown, "layers-title-open.svg");
+        ui.buttonSetImage(btn_layer_panel, layer_dropdown);
 
-        // Content
-        this.layers_panel_content = ui.createElement("lp_content", ui.getElement(this.layers_panel), "div");
-        ui.setPos(this.layers_panel_content, "left", "0px", "top", "58px");
-        ui.setSize(this.layers_panel_content, "100%", this.height - 58 - 49 + "px");
-        new SimpleBar(ui.getElement(this.layers_panel_content));
-        this.layers_panel_content = document.getElementsByClassName("simplebar-content")[0];
+        // Layer panel content
+        this.layer_panel_content = ui.createElement("lp_content", ui.getElement(this.layer_panel), "div");
+        ui.setPos(this.layer_panel_content, "left", "0px", "top", "58px");
+        ui.setSize(this.layer_panel_content, "100%", this.height - 58 - 49 + "px");
+        new SimpleBar(ui.getElement(this.layer_panel_content));
+        this.layer_panel_content = document.getElementsByClassName("simplebar-content")[0];
 
         // Bottom Buttons
-        var btn_new_group = ui.createElement("btn_new_group", ui.getElement(this.layers_panel), "img");
+        var btn_new_group = ui.createElement("btn_new_group", ui.getElement(this.layer_panel), "img");
         ui.setPos(btn_new_group, "left", "14px", "top", this.height - 40 + "px");
         ui.setSize(btn_new_group, "28px", "28px");
         ui.setImage(btn_new_group, "layers-new-group.svg");
         ui.makeButton(btn_new_group, null);
 
-        var btn_new_scene = ui.createElement("btn_new_scene", ui.getElement(this.layers_panel), "img");
+        var btn_new_scene = ui.createElement("btn_new_scene", ui.getElement(this.layer_panel), "img");
         ui.setPos(btn_new_scene, "left", "46px", "top", this.height - 40 + "px");
         ui.setSize(btn_new_scene, "28px", "28px");
         ui.setImage(btn_new_scene, "layers-new-scene.svg");
         ui.makeButton(btn_new_scene, null);
 
-        var btn_delete_layer = ui.createElement("btn_new_scene", ui.getElement(this.layers_panel), "img");
+        var btn_delete_layer = ui.createElement("btn_new_scene", ui.getElement(this.layer_panel), "img");
         ui.setPos(btn_delete_layer, "right", "14px", "top", this.height - 40 + "px");
         ui.setSize(btn_delete_layer, "28px", "28px");
         ui.setImage(btn_delete_layer, "layers-delete.svg");
         ui.makeButton(btn_delete_layer, null);
+
+        // Properties panel
+        var wh = window.innerHeight;
+        this.prop_panel = ui.createElement("prop_panel", document.body, "div");
+        ui.setPos(this.prop_panel, "right", "26px", "bottom", "68px");
+        ui.setSize(this.prop_panel, this.width + "px", wh - this.height - 172 + "px");
+        ui.setPanelStyle(this.prop_panel);
+
+        var prop_panel_title = ui.createElement("pp_title", ui.getElement(this.prop_panel), "div");
+        ui.setPos(prop_panel_title, "left", "24px", "top", "20px");
+        ui.addText(prop_panel_title, "LAYERS", "RBold", "14pt", "#a0aec0");
+
+        var btn_prop_panel = ui.createElement("btn_prop_panel", ui.getElement(this.prop_panel), "div");
+        ui.setPos(btn_prop_panel, "right", "0px", "top", "0px");
+        ui.setSize(btn_prop_panel, this.width + "px", "58px");
+        ui.makeButton(btn_prop_panel, togglePropPanel);
+
+        var prop_dropdown = ui.createElement("prop_dropdown", ui.getElement(btn_prop_panel), "img");
+        ui.setPos(prop_dropdown, "right", "20px", "top", "20px");
+        ui.setSize(prop_dropdown, "20px", "20px");
+        ui.setImage(prop_dropdown, "layers-title-open.svg");
+        ui.buttonSetImage(btn_prop_panel, prop_dropdown);
+
+        // Properties panel content
+        this.prop_panel_content = ui.createElement("lp_content", ui.getElement(this.prop_panel), "div");
+        ui.setPos(this.prop_panel_content, "left", "0px", "top", "58px");
+        ui.setSize(this.prop_panel_content, "100%", wh - this.height - 172 - 58 + "px");
+        new SimpleBar(ui.getElement(this.prop_panel_content));
+        this.prop_panel_content = document.getElementsByClassName("simplebar-content")[1];
     }
 }
 // ------------------------------------------------------------
@@ -949,6 +977,22 @@ function select_move_tool() {
 
 function select_draw_tool() {
     action.setTool("draw_tool");
+}
+
+function toggleLayerPanel() {
+    if (layers.layers_panel_open) {
+        layers.layers_panel_open = false;
+    } else {
+        layers.layers_panel_open = true;
+    }
+}
+
+function togglePropPanel() {
+    if (layers.prop_panel_open) {
+        layers.prop_panel_open = false;
+    } else {
+        layers.prop_panel_open = true;
+    }
 }
 // ------------------------------------------------------------
 
@@ -1101,7 +1145,7 @@ window.onload = function() {
     render_grid = new gridSystem();
 
     // Layers
-    layers = new layerSystem();
+    layers = new panelSystem();
 
     // Main update loop
     update();
