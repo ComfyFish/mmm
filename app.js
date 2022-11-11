@@ -19,10 +19,14 @@ var action = null;
 var renderer = null;
 var stage = null;
 var project = null;
-var layers = null;
+var panels = null;
 var render_grid = null;
 var timers = null;
 var ui = null;
+
+function clamp(val, max, min) {
+    return Math.min(Math.max(val, min), max);
+}
 
 // ------------------------------------------------------------
 // Input Manager: 
@@ -105,17 +109,6 @@ class inputManager {
 
     isPressed(key) {
         return this.key_list[key].isDown;
-    }
-
-    registerDefaultKeys() {
-        this.addKey("keyboard", "a");
-        this.registerPressFunction("a", keyPressTest);
-        //this.registerHoldFunction("a", keyPressTest);
-
-        this.addKey("mouse", 1);
-        this.registerPressFunction(1, mbMiddlePress);
-        this.registerHoldFunction(1, mbMiddleHold);
-        this.registerReleaseFunction(1, mbMiddleRelease);
     }
 
     registerKey(type, value) {
@@ -209,12 +202,32 @@ class inputManager {
         this.store_pos.y = y;
     }
 
+    getStoredPos() {
+        return this.store_pos;
+    }
+
     checkMouseOut(e, element) {
         if (e.relatedTarget == null) { return true; }
         if (e.relatedTarget == element) { return false; }
         if (e.relatedTarget.parentElement == element) { return false; }
         if (e.relatedTarget.parentElement.parentElement == element) { return false; }
         return true;
+    }
+
+    registerDefaultKeys() {
+        this.addKey("keyboard", "a");
+        this.registerPressFunction("a", keyPressTest);
+        //this.registerHoldFunction("a", keyPressTest);
+
+        this.addKey("mouse", 1);
+        this.registerPressFunction(1, mbMiddlePress);
+        this.registerHoldFunction(1, mbMiddleHold);
+        this.registerReleaseFunction(1, mbMiddleRelease);
+
+        this.addKey("mouse", 0);
+        this.registerPressFunction(0, mbLeftPress);
+        this.registerHoldFunction(0, mbLeftHold);
+        this.registerReleaseFunction(0, mbLeftRelease);
     }
 }
 // ------------------------------------------------------------
@@ -236,18 +249,58 @@ function mbMiddlePress() {
 }
 
 function mbMiddleHold() {
-    if (action.checkAction("pan_viewport"))
+    if (action.checkAction("pan_viewport")) {
         var dist = input.distanceToClick();
         stage.x = input.store_pos.x + dist.x;
         stage.y = input.store_pos.y + dist.y;
+    }
 }
 
 function mbMiddleRelease() {
-    console.log(action.action);
     action.clearAction();
 }
 
+function mbLeftPress() {
+    input.updateClickPos();
+}
 
+function mbLeftHold() {
+    var dist = input.distanceToClick();
+    //var nh = clamp(panel_size.y - dist.y, window.innerHeight-327, 155);
+    if (action.checkAction("resize_panels_v")) {
+        var panel_size = input.getStoredPos();
+        var nw = clamp(panel_size.x - dist.x, window.innerWidth/2, 200);
+        panels.width = nw;
+        ui.getElement(panels.layer_panel).style.width = nw + "px";
+        ui.getElement(panels.prop_panel).style.width = nw + "px";
+        ui.getElement(panels.grabby_v).style.right = nw + 30 + "px";
+        ui.getElement(panels.grabby_h).style.width = nw + "px";
+    }
+    if (action.checkAction("resize_panels_h")) {
+        var panel_size = input.getStoredPos();
+        var nh = clamp(panel_size.y + dist.y, window.innerHeight-327, 155);
+        panels.height = nh;
+        ui.getElement(panels.layer_panel).style.height = nh + "px";
+        ui.getElement(panels.prop_panel).style.height = window.innerHeight - nh - 172 + "px";
+        ui.getElement(panels.grabby_h).style.top = nh + 85 + "px";
+        ui.getElement(panels.layer_panel_content).style.height = nh - 58 - 49 + "px";
+        ui.getElement(panels.prop_panel_content).style.height = window.innerHeight - nh - 172 - 58 + "px";
+        ui.getElement(panels.btn_new_group).style.top = nh - 40 + "px";
+        ui.getElement(panels.btn_new_scene).style.top = nh - 40 + "px";
+        ui.getElement(panels.btn_delete_layer).style.top = nh - 40 + "px";
+    }
+}
+
+function mbLeftRelease() {
+    if (action.checkAction("resize_panels_h")) {
+        ui.setAnim(panels.layer_panel, "height 0.2s ease-out");
+        ui.setAnim(panels.prop_panel, "height 0.2s ease-out");
+        ui.setAnim(panels.btn_new_group, "height 0.2s ease-out");
+        ui.setAnim(panels.btn_new_scene, "height 0.2s ease-out");
+        ui.setAnim(panels.btn_delete_layer, "height 0.2s ease-out");
+    }
+    action.clearAction();
+}
 // ------------------------------------------------------------
 
 // ------------------------------------------------------------
@@ -266,6 +319,9 @@ class actionSystem {
     }
 
     setAction(action) {
+        if (this.action.name != "") {
+            this.clearAction();
+        }
         this.action.name = action;
     }
 
@@ -426,7 +482,7 @@ class gridSystem {
         this.selection.clear();
         this.clearHandles();
         //this.setControlSprites();
-        if (layers.selected_layers.length == 0) { return; }
+        if (panels.selected_layers.length == 0) { return; }
         if (mouse_state.type == "window_draw") { return; }
 
         // Get the bounding box of all the selections
@@ -444,8 +500,8 @@ class gridSystem {
 
     getSelectionBounds() {
         var x1, y1, x2, y2;
-        for (var i = 0; i < layers.selected_layers.length; i++) {
-            var obj = layers.selected_layers[i].render_object;
+        for (var i = 0; i < panels.selected_layers.length; i++) {
+            var obj = panels.selected_layers[i].render_object;
             if (i == 0) { x1 = obj.x; y1 = obj.y; x2 = obj.x + obj.width; y2 = obj.y + obj.height; }
             else {
                 if (obj.x < x1) { x1 = obj.x; }
@@ -525,8 +581,8 @@ class gridSystem {
     }
 
     selectGuide(index) {
-        if (layers.selected_layers.length > 0) {
-            layers.deselectAllLayers();
+        if (panels.selected_layers.length > 0) {
+            panels.deselectAllLayers();
         }
         this.guide[index].selected = true;
     }
@@ -860,15 +916,25 @@ class panelSystem {
         this.height = 400;
         this.layer_panel = null;
         this.layer_panel_content = null;
+        this.prop_panel = null;
+        this.prop_panel_content = null;
+        this.grabby_v = null;
+        this.grabby_h = null;
+        this.btn_new_group = null;
+        this.btn_new_scene = null;
+        this.bth_delete_layer = null;
+
+        this.lp_content_container = null;
+        this.pp_content_container = null;
+
         this.layer_panel_open = true;
         this.prop_panel_open = true;
-        this.prop_panel_content = null;
 
         this.createUI();
     }
 
     createUI() {
-        // Layer Panel
+        // Layer panel
         this.layer_panel = ui.createElement("layer_panel", document.body, "div");
         ui.setPos(this.layer_panel, "right", "26px", "top", "86px");
         ui.setSize(this.layer_panel, this.width + "px", this.height + "px");
@@ -894,26 +960,26 @@ class panelSystem {
         ui.setPos(this.layer_panel_content, "left", "0px", "top", "58px");
         ui.setSize(this.layer_panel_content, "100%", this.height - 58 - 49 + "px");
         new SimpleBar(ui.getElement(this.layer_panel_content));
-        this.layer_panel_content = document.getElementsByClassName("simplebar-content")[0];
+        this.lp_content_container = document.getElementsByClassName("simplebar-content")[0];
 
         // Bottom Buttons
-        var btn_new_group = ui.createElement("btn_new_group", ui.getElement(this.layer_panel), "img");
-        ui.setPos(btn_new_group, "left", "14px", "top", this.height - 40 + "px");
-        ui.setSize(btn_new_group, "28px", "28px");
-        ui.setImage(btn_new_group, "layers-new-group.svg");
-        ui.makeButton(btn_new_group, null);
+        this.btn_new_group = ui.createElement("btn_new_group", ui.getElement(this.layer_panel), "img");
+        ui.setPos(this.btn_new_group, "left", "14px", "top", this.height - 40 + "px");
+        ui.setSize(this.btn_new_group, "28px", "28px");
+        ui.setImage(this.btn_new_group, "layers-new-group.svg");
+        ui.makeButton(this.btn_new_group, null);
 
-        var btn_new_scene = ui.createElement("btn_new_scene", ui.getElement(this.layer_panel), "img");
-        ui.setPos(btn_new_scene, "left", "46px", "top", this.height - 40 + "px");
-        ui.setSize(btn_new_scene, "28px", "28px");
-        ui.setImage(btn_new_scene, "layers-new-scene.svg");
-        ui.makeButton(btn_new_scene, null);
+        this.btn_new_scene = ui.createElement("btn_new_scene", ui.getElement(this.layer_panel), "img");
+        ui.setPos(this.btn_new_scene, "left", "46px", "top", this.height - 40 + "px");
+        ui.setSize(this.btn_new_scene, "28px", "28px");
+        ui.setImage(this.btn_new_scene, "layers-new-scene.svg");
+        ui.makeButton(this.btn_new_scene, null);
 
-        var btn_delete_layer = ui.createElement("btn_new_scene", ui.getElement(this.layer_panel), "img");
-        ui.setPos(btn_delete_layer, "right", "14px", "top", this.height - 40 + "px");
-        ui.setSize(btn_delete_layer, "28px", "28px");
-        ui.setImage(btn_delete_layer, "layers-delete.svg");
-        ui.makeButton(btn_delete_layer, null);
+        this.btn_delete_layer = ui.createElement("btn_new_scene", ui.getElement(this.layer_panel), "img");
+        ui.setPos(this.btn_delete_layer, "right", "14px", "top", this.height - 40 + "px");
+        ui.setSize(this.btn_delete_layer, "28px", "28px");
+        ui.setImage(this.btn_delete_layer, "layers-delete.svg");
+        ui.makeButton(this.btn_delete_layer, null);
 
         // Properties panel
         var wh = window.innerHeight;
@@ -924,7 +990,7 @@ class panelSystem {
 
         var prop_panel_title = ui.createElement("pp_title", ui.getElement(this.prop_panel), "div");
         ui.setPos(prop_panel_title, "left", "24px", "top", "20px");
-        ui.addText(prop_panel_title, "LAYERS", "RBold", "14pt", "#a0aec0");
+        ui.addText(prop_panel_title, "PROPERTIES", "RBold", "14pt", "#a0aec0");
 
         var btn_prop_panel = ui.createElement("btn_prop_panel", ui.getElement(this.prop_panel), "div");
         ui.setPos(btn_prop_panel, "right", "0px", "top", "0px");
@@ -942,8 +1008,86 @@ class panelSystem {
         ui.setPos(this.prop_panel_content, "left", "0px", "top", "58px");
         ui.setSize(this.prop_panel_content, "100%", wh - this.height - 172 - 58 + "px");
         new SimpleBar(ui.getElement(this.prop_panel_content));
-        this.prop_panel_content = document.getElementsByClassName("simplebar-content")[1];
+        this.pp_content_container = document.getElementsByClassName("simplebar-content")[1];
+
+        // Grabbies
+        this.grabby_v = ui.createElement("grabby_v", document.body, "div");
+        ui.setPos(this.grabby_v, "right", 30 + this.width + "px", "top", "95px");
+        ui.setSize(this.grabby_v, "14px", "79.5%");
+        var grabby_v_line = ui.createElement("grabby_v_line", ui.getElement(this.grabby_v), "div");
+        ui.setPos(grabby_v_line, "left", "50%", "top", "0px");
+        ui.setSize(grabby_v_line, "1px", "100%");
+        ui.setBgColor(grabby_v_line, "#3b3e51");
+        ui.setAnim(grabby_v_line, "opacity 0.2s ease-out");
+        ui.getElement(grabby_v_line).style.opacity = 0;
+
+        ui.getElement(this.grabby_v).onmouseover = function(e) {
+            ui.getElement(grabby_v_line).style.opacity = 1;
+        }
+        ui.getElement(this.grabby_v).onmouseout = function(e) {
+            ui.getElement(grabby_v_line).style.opacity = 0;
+        }
+        ui.getElement(this.grabby_v).onmousedown = function(e) {
+            input.storePos(panels.width, panels.height);
+            action.setAction("resize_panels_v");
+        }
+
+        this.grabby_h = ui.createElement("grabby_h", document.body, "div");
+        ui.setPos(this.grabby_h, "right", "26px", "top", this.height + 85 + "px");
+        ui.setSize(this.grabby_h, this.width + "px", "18px");
+        var grabby_h_line = ui.createElement("grabby_h_line", ui.getElement(this.grabby_h), "div");
+        ui.setPos(grabby_h_line, "left", "0px", "top", "50%");
+        ui.setSize(grabby_h_line, "100%", "1px");
+        ui.setBgColor(grabby_h_line, "#3b3e51");
+        ui.setAnim(grabby_h_line, "opacity 0.2s ease-out");
+        ui.getElement(grabby_h_line).style.opacity = 0;
+
+        ui.getElement(this.grabby_h).onmouseover = function(e) {
+            ui.getElement(grabby_h_line).style.opacity = 1;
+        }
+        ui.getElement(this.grabby_h).onmouseout = function(e) {
+            ui.getElement(grabby_h_line).style.opacity = 0;
+        }
+        ui.getElement(this.grabby_h).onmousedown = function(e) {
+            input.storePos(panels.width, panels.height);
+            action.setAction("resize_panels_h");
+            ui.setAnim(panels.layer_panel, "height 0s ease-out");
+            ui.setAnim(panels.prop_panel, "height 0s ease-out");
+            ui.setAnim(panels.btn_new_group, "height 0s ease-out");
+            ui.setAnim(panels.btn_new_scene, "height 0s ease-out");
+            ui.setAnim(panels.btn_delete_layer, "height 0s ease-out");
+        }
     }
+
+/*  
+    this.grabby_vertical.onmousedown = function(e) {
+        thisLayer.temp_width = thisLayer.width;
+        thisLayer.temp_height = thisLayer.height;
+
+        mouse_state.type = "resize_panels_v";
+    }
+
+    this.grabby_horizontal.onmousedown = function(e) {
+        thisLayer.temp_width = thisLayer.width;
+        if (!thisLayer.open) {
+            thisLayer.height = 58;
+            thisLayer.open = true;
+            thisLayer.updateOpen();
+        }
+        if (!thisLayer.properties_open) {
+            thisLayer.height = window.innerHeight-172-58;
+            thisLayer.properties_open = true;
+            thisLayer.updateOpen();
+        }
+        thisLayer.temp_height = thisLayer.height
+        thisLayer.window_layers.style.transition = "height 0s ease-out";
+        thisLayer.window_properties.style.transition = "height 0s ease-out";
+        thisLayer.btn_new_group.style.transition    = "top 0.0s ease-out";
+        thisLayer.btn_new_scene.style.transition    = "top 0.0s ease-out";
+        thisLayer.btn_delete_layer.style.transition = "top 0.0s ease-out";
+
+        mouse_state.type = "resize_panels_h";
+    } */
 }
 // ------------------------------------------------------------
 
@@ -980,18 +1124,20 @@ function select_draw_tool() {
 }
 
 function toggleLayerPanel() {
-    if (layers.layers_panel_open) {
-        layers.layers_panel_open = false;
+    if (panels.layers_panel_open) {
+        panels.layers_panel_open = false;
+        if (!panels.prop_panel_open) { togglePropPanel(); }
     } else {
-        layers.layers_panel_open = true;
+        panels.layers_panel_open = true;
     }
 }
 
 function togglePropPanel() {
-    if (layers.prop_panel_open) {
-        layers.prop_panel_open = false;
+    if (panels.prop_panel_open) {
+        panels.prop_panel_open = false;
+        if (!panels.layers_panel_open) { toggleLayerPanel(); }
     } else {
-        layers.prop_panel_open = true;
+        panels.prop_panel_open = true;
     }
 }
 // ------------------------------------------------------------
@@ -1145,7 +1291,7 @@ window.onload = function() {
     render_grid = new gridSystem();
 
     // Layers
-    layers = new panelSystem();
+    panels = new panelSystem();
 
     // Main update loop
     update();
