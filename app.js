@@ -20,15 +20,41 @@ var renderer = null;
 var stage = null;
 var project = null;
 var panels = null;
-var render_grid = null;
+var layers = null;
+var grid = null;
 var timers = null;
 var ui = null;
 
+var layer_id = 0;
 var scene_num = 0;
 var layer_num = 0;
 
 function clamp(val, max, min) {
     return Math.min(Math.max(val, min), max);
+}
+
+function mouseInArea(mouse_x, mouse_y, area) {
+    if (mouse_x > area.left && mouse_x < area.right) {
+        if (mouse_y > area.top && mouse_y < area.bottom) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function mouseInStageArea(mouse_x, mouse_y) {
+    if (mouse_x < 83) { return false; }
+    if (mouse_y < 80) { return false; }
+    if (mouse_x > window.innerWidth - panels.getWidth() - 21) { return false; }
+    return true;
+}
+
+function checkMouseOut(e, element) {
+    if (e.relatedTarget == null) { return true; }
+    if (e.relatedTarget == element) { return false; }
+    if (e.relatedTarget.parentElement == element) { return false; }
+    if (e.relatedTarget.parentElement.parentElement == element) { return false; }
+    return true;
 }
 
 // ------------------------------------------------------------
@@ -209,6 +235,14 @@ class inputManager {
         return this.store_pos;
     }
 
+    getMousePos() {
+        return this.mouse_pos;
+    }
+
+    getMouseClickPos() {
+        return this.click_pos;
+    }
+
     checkMouseOut(e, element) {
         if (e.relatedTarget == null) { return true; }
         if (e.relatedTarget == element) { return false; }
@@ -239,8 +273,9 @@ class inputManager {
 // Input Manager default key functions
 // ------------------------------------------------------------
 function keyPressTest(key) {
-    console.log("Key " + key + " pressed!");
-    console.log("Mouse X: " + input.mouse_pos.x + " Mouse Y: " + input.mouse_pos.y);
+    //console.log("Key " + key + " pressed!");
+    //console.log("Mouse X: " + input.mouse_pos.x + " Mouse Y: " + input.mouse_pos.y);
+    layers.getAllLayers();
 }
 
 function mbMiddlePress() {
@@ -265,11 +300,18 @@ function mbMiddleRelease() {
 
 function mbLeftPress() {
     input.updateClickPos();
+    if (action.checkTool("draw_tool")) {
+        if (!mouseInStageArea(input.mouse_pos.x, input.mouse_pos.y)) { return; }
+        action.setAction("window_draw");
+        var win_layer = layers.newWindowLayer();
+        action.addObj({type:"win_create", layer:win_layer, win:win_layer.render_object, x:0, y:0, w:0, h:0});
+        win_layer.render_object.move(input.mouse_pos.sx, input.mouse_pos.sy);
+    }
 }
 
 function mbLeftHold() {
     var dist = input.distanceToClick();
-    //var nh = clamp(panel_size.y - dist.y, window.innerHeight-327, 155);
+
     if (action.checkAction("resize_panels_v")) {
         var panel_size = input.getStoredPos();
         var nw = clamp(panel_size.x - dist.x, window.innerWidth/2, 200);
@@ -279,6 +321,25 @@ function mbLeftHold() {
         var panel_size = input.getStoredPos();
         var nh = clamp(panel_size.y + dist.y, window.innerHeight-327, 155);
         panels.resizeHeight(nh);
+    }
+    if (action.checkAction("window_draw")) {
+        var cp = input.getMouseClickPos();
+        var mp = input.getMousePos();
+        var mz_win = action.getObj().win;
+        if (mz_win) {
+            var diff_x = mp.sx - cp.sx;
+            var diff_y = mp.sy - cp.sy;
+            if (diff_x < 0) {
+                mz_win.move(mp.sx, mz_win.y);
+                diff_x = Math.abs(diff_x);
+            }
+            if (diff_y < 0) {
+                mz_win.move(mz_win.x, mp.sy);
+                diff_y = Math.abs(diff_y);
+            }
+            mz_win.resize(diff_x, diff_y);
+            grid.refreshSelection();
+        }
     }
 }
 
@@ -291,6 +352,7 @@ function mbLeftRelease() {
         ui.setAnim(panels.btn_delete_layer, "height 0.2s ease-out");
     }
     action.clearAction();
+    grid.refreshSelection();
 }
 // ------------------------------------------------------------
 
@@ -320,7 +382,7 @@ class actionSystem {
         return this.action.name == action;
     }
 
-    actionAddObj(obj) {
+    addObj(obj) {
         this.action.obj = obj;
     }
 
@@ -332,7 +394,6 @@ class actionSystem {
     }
 
     noAction() {
-        console.log(this.action.name == "");
         return this.action.name == "";
     }
 
@@ -342,6 +403,10 @@ class actionSystem {
 
     checkTool(tool) {
         return this.tool == tool;
+    }
+
+    getObj() {
+        return this.action.obj;
     }
 
     clearTool() {
@@ -473,8 +538,8 @@ class gridSystem {
         this.selection.clear();
         this.clearHandles();
         //this.setControlSprites();
-        if (panels.selected_layers.length == 0) { return; }
-        if (mouse_state.type == "window_draw") { return; }
+        if (layers.selected.length == 0) { return; }
+        if (action.checkAction("window_draw")) { return; }
 
         // Get the bounding box of all the selections
         this.getSelectionBounds();
@@ -491,8 +556,8 @@ class gridSystem {
 
     getSelectionBounds() {
         var x1, y1, x2, y2;
-        for (var i = 0; i < panels.selected_layers.length; i++) {
-            var obj = panels.selected_layers[i].render_object;
+        for (var i = 0; i < layers.selected.length; i++) {
+            var obj = layers.selected[i].render_object;
             if (i == 0) { x1 = obj.x; y1 = obj.y; x2 = obj.x + obj.width; y2 = obj.y + obj.height; }
             else {
                 if (obj.x < x1) { x1 = obj.x; }
@@ -572,8 +637,8 @@ class gridSystem {
     }
 
     selectGuide(index) {
-        if (panels.selected_layers.length > 0) {
-            panels.deselectAllLayers();
+        if (layers.selected.length > 0) {
+            layers.deselectAllLayers();
         }
         this.guide[index].selected = true;
     }
@@ -653,7 +718,7 @@ class timerSystem {
         this.timers = [];
 
         var scrollTimerDuring = function () {
-            scrollLayers(100000);
+            panels.scrollLayers(100000);
         };
         this.scroll_timer = this.newTimer(scrollTimerDuring, null);
     }
@@ -671,7 +736,7 @@ class timerSystem {
         this.timers[timer].time = time;
     }
 
-    updateTimers() {
+    update() {
         for (var i = 0; i < this.timers.length; i++) {
             var timer = this.timers[i];
             if (timer.time > 0) {
@@ -684,21 +749,21 @@ class timerSystem {
 }
 // ------------------------------------------------------------
 
+// ------------------------------------------------------------
+// UI System:
+//   Helper class for making UIs and stuff
+// ------------------------------------------------------------
 const btn = {
     ele: 0,
     img: 1,
     alt: 2,
     prs: 3,
     tgl: 4,
-    grp: 5,
-    fnc: 6,
-    hvr: 7
+    swp: 5,
+    grp: 6,
+    fnc: 7,
+    hvr: 8
 };
-
-// ------------------------------------------------------------
-// UI System:
-//   Helper class for making UIs and stuff
-// ------------------------------------------------------------
 class UISystem {
     constructor() {
         this.initialize(...arguments);
@@ -769,6 +834,14 @@ class UISystem {
         this.element[element].src = img_path + path;
     }
 
+    setImageHover(element, path) {
+        this.element[element].src = img_path + path.split(".")[0] + "-hover.svg";
+    }
+
+    setImageSelected(element, path) {
+        this.element[element].src = img_path + path.split(".")[0] + "-selected.svg";
+    }
+
     setBgColor(element, color) {
         this.element[element].style.backgroundColor = color;
     }
@@ -796,11 +869,26 @@ class UISystem {
         this.setAnim(element, "height 0.2s ease-out");
     }
 
+    setLayerStyle(element) {
+        //this.setBgColor(element, "#1a1d2e");
+        this.element[element].style.position = "relative";
+        this.element[element].style.overflow = "hidden";
+        this.element[element].style.transition = "height 0.1s ease-out";
+    }
+
     addText(element, text, font, font_size, color) {
         this.element[element].innerText = text;
         this.element[element].style.fontFamily = font;
         this.element[element].style.fontSize = font_size;
         this.element[element].style.color = color;
+    }
+
+    hide(element) {
+        this.element[element].style.visibility = "hidden";
+    }
+
+    unhide(element) {
+        this.element[element].style.visibility = "visible";
     }
 
     makeButton(element, click_function) {
@@ -812,21 +900,18 @@ class UISystem {
         button[btn.hvr] = false;
         button[btn.prs] = false;
         button[btn.tgl] = false;
+        button[btn.swp] = false;
         button[btn.grp] = 0;
         button[btn.fnc] = click_function;
 
         this.element[element].onmouseover = function (e) {
-            if (button[btn.prs] == false) {
-                button[btn.iel].src = button[btn.img].split(".")[0] + "-hover.svg";
-            }
             button[btn.hvr] = true;
+            ui.updateButton(element);
         };
 
         this.element[element].onmouseout = function (e) {
-            if (button[btn.prs] == false) {
-                button[btn.iel].src = button[btn.img];
-            }
             button[btn.hvr] = false;
+            ui.updateButton(element);
         };
 
         this.element[element].onclick = function (e) {
@@ -835,6 +920,32 @@ class UISystem {
         };
 
         this.button.push(button);
+    }
+
+    updateButton(element) {
+        var button = this.findButton(element);
+        if (button == -1) { return; }
+        if (this.button[button][btn.prs] == false) {
+            if (this.button[button][btn.swp] == false) {
+                if (this.button[button][btn.hvr] == false) {
+                    this.button[button][btn.iel].src = this.button[button][btn.img];
+                } else {
+                    this.button[button][btn.iel].src = this.button[button][btn.img].split(".")[0] + "-hover.svg";
+                }
+            } else {
+                if (this.button[button][btn.hvr] == false) {
+                    this.button[button][btn.iel].src = this.button[button][btn.alt];
+                } else {
+                    this.button[button][btn.iel].src = this.button[button][btn.alt].split(".")[0] + "-hover.svg";
+                }
+            }
+        } else {
+            if (this.button[button][btn.swp] == false) {
+                this.button[button][btn.iel].src = this.button[button][btn.img].split(".")[0] + "-selected.svg";
+            } else {
+                this.button[button][btn.iel].src = this.button[button][btn.alt].split(".")[0] + "-selected.svg";
+            }
+        }
     }
 
     findButton(element) {
@@ -850,35 +961,28 @@ class UISystem {
 
     pressButton(element) {
         var button = this.findButton(element);
-        if (button != -1) {
-            var group = this.button[button][btn.grp];
-            if (group || this.button[button][btn.tgl]) {
-                this.unpressGroup(group);
-                this.button[button][btn.prs] = true;
-                this.button[button][btn.iel].src = this.button[button][btn.img].split(".")[0] + "-selected.svg";
-            }
-            var button_function = this.button[button][btn.fnc];
-            if (button_function) { button_function(); }
+        if (button == -1) { return; }
+        var group = this.button[button][btn.grp];
+        if (group || this.button[button][btn.tgl]) {
+            this.unpressGroup(group);
+            this.button[button][btn.prs] = true;
+            this.updateButton(element);
         }
+        var button_function = this.button[button][btn.fnc];
+        if (button_function) { button_function(); }
     }
 
     unpressButton(element) {
         var button = this.findButton(element);
-        if (button != -1) {
-            this.button[button][btn.prs] = false;
-            if (this.button[button][btn.hvr]) {
-                this.button[button][btn.iel].src = this.button[button][btn.img].split(".")[0] + "-hover.svg";
-            } else {
-                this.button[button][btn.iel].src = this.button[button][btn.img];
-            }
-        }
+        if (button == -1) { return; }
+        this.button[button][btn.prs] = false;
+        this.updateButton(element);
     }
 
     setButtonGroup(element, group) {
         var button = this.findButton(element);
-        if (button != -1) {
-            this.button[button][btn.grp] = group;
-        }
+        if (button == -1) { return; }
+        this.button[button][btn.grp] = group;
     }
 
     unpressGroup(group) {
@@ -893,46 +997,38 @@ class UISystem {
 
     setButtonImage(element, img_element) {
         var button = this.findButton(element);
-        if (button != -1) {
-            this.button[button][btn.iel] = this.element[img_element];
-            this.button[button][btn.img] = this.element[img_element].src;
-        }
+        if (button == -1) { return; }
+        this.button[button][btn.iel] = this.element[img_element];
+        this.button[button][btn.img] = this.element[img_element].src;
     }
 
-    changeButtonImage(element, img, hover) {
+    changeButtonImage(element, img) {
         var button = this.findButton(element);
-        if (button != -1) {
-            this.button[button][btn.img] = img_path + img;
-            if (hover) {
-                this.button[button][btn.iel].src = this.button[button][btn.img].split(".")[0] + "-hover.svg";
-            } else {
-                this.button[button][btn.iel].src = this.button[button][btn.img];
-            }
-        }
+        if (button == -1) { return; }
+        this.button[button][btn.img] = img_path + img;
+        //this.button[button][btn.alt] = img_path + alt;
+        this.updateButton(element);
     }
 
     setButtonAlt(element, img) {
         var button = this.findButton(element);
-        if (button != -1) {
-            this.button[button][btn.alt] = img_path + img;
-        }
+        if (button == -1) { return; }
+        this.button[button][btn.alt] = img_path + img;
+    }
+
+    changeButtonAlt(element, img) {
+        var button = this.findButton(element);
+        if (button == -1) { return; }
+        //this.button[button][btn.img] = img_path + img;
+        this.button[button][btn.alt] = img_path + img;
+        this.updateButton(element);
     }
 
     buttonSwitch(element) {
         var button = this.findButton(element);
-        if (button != -1) {
-            if (this.button[button][btn.hvr]) { 
-                this.button[button][btn.iel].src = this.button[button][btn.alt].split(".")[0] + "-hover.svg";
-            } else {
-                this.button[button][btn.iel].src = this.button[button][btn.alt];
-            }
-            var img = this.button[button][btn.img];
-            var alt = this.button[button][btn.alt];
-            this.button[button][btn.img] = alt;
-            this.button[button][btn.alt] = img;
-            console.log(img);
-            console.log(alt);
-        }
+        if (button == -1) { return; }
+        this.button[button][btn.swp] = !this.button[button][btn.swp];
+        this.updateButton(element);
     }
 }
 // ------------------------------------------------------------
@@ -967,6 +1063,8 @@ class panelSystem {
 
         this.lp_content_container = null;
         this.pp_content_container = null;
+        this.lp_content_wrapper = null;
+        this.pp_content_wrapper = null;
 
         this.layer_panel_open = true;
         this.prop_panel_open = true;
@@ -1005,6 +1103,8 @@ class panelSystem {
         ui.setSize(this.layer_panel_content, "100%", this.height - 58 - 49 + "px");
         new SimpleBar(ui.getElement(this.layer_panel_content));
         this.lp_content_container = document.getElementsByClassName("simplebar-content")[0];
+        this.lp_content_wrapper = document.getElementsByClassName("simplebar-content-wrapper")[0];
+        //console.log(this.lp_content_container);
 
         // Bottom Buttons
         this.btn_new_group = ui.createElement("btn_new_group", ui.getElement(this.layer_panel), "img");
@@ -1017,7 +1117,7 @@ class panelSystem {
         ui.setPos(this.btn_new_scene, "left", "46px", "top", this.height - 40 + "px");
         ui.setSize(this.btn_new_scene, "28px", "28px");
         ui.setImage(this.btn_new_scene, "layers-new-scene.svg");
-        ui.makeButton(this.btn_new_scene, null);
+        ui.makeButton(this.btn_new_scene, this.newSceneButton);
 
         this.btn_delete_layer = ui.createElement("btn_delete", ui.getElement(this.layer_panel), "img");
         ui.setPos(this.btn_delete_layer, "right", "14px", "top", this.height - 40 + "px");
@@ -1054,16 +1154,17 @@ class panelSystem {
         ui.setSize(this.prop_panel_content, "100%", wh - this.height - 172 - 58 + "px");
         new SimpleBar(ui.getElement(this.prop_panel_content));
         this.pp_content_container = document.getElementsByClassName("simplebar-content")[1];
+        this.pp_content_wrapper = document.getElementsByClassName("simplebar-content-wrapper")[1];
 
         // Grabbies
         this.grabby_v = ui.createElement("grabby_v", document.body, "div");
-        ui.setPos(this.grabby_v, "right", 30 + this.width + "px", "top", "95px");
-        ui.setSize(this.grabby_v, "14px", "79.5%");
+        ui.setPos(this.grabby_v, "right", 24 + this.width + "px", "top", "95px");
+        ui.setSize(this.grabby_v, "20px", "79.5%");
         var grabby_v_line = ui.createElement("grabby_v_line", ui.getElement(this.grabby_v), "div");
         ui.setPos(grabby_v_line, "left", "50%", "top", "0px");
         ui.setSize(grabby_v_line, "1px", "100%");
         ui.setBgColor(grabby_v_line, "#3b3e51");
-        ui.setAnim(grabby_v_line, "opacity 0.2s ease-out");
+        ui.setAnim(grabby_v_line, "opacity 0.1s ease-out");
         ui.getElement(grabby_v_line).style.opacity = 0;
 
         ui.getElement(this.grabby_v).onmouseover = function(e) {
@@ -1079,12 +1180,12 @@ class panelSystem {
 
         this.grabby_h = ui.createElement("grabby_h", document.body, "div");
         ui.setPos(this.grabby_h, "right", "26px", "top", this.height + 85 + "px");
-        ui.setSize(this.grabby_h, this.width + "px", "18px");
+        ui.setSize(this.grabby_h, this.width + "px", "20px");
         var grabby_h_line = ui.createElement("grabby_h_line", ui.getElement(this.grabby_h), "div");
         ui.setPos(grabby_h_line, "left", "0px", "top", "50%");
         ui.setSize(grabby_h_line, "100%", "1px");
         ui.setBgColor(grabby_h_line, "#3b3e51");
-        ui.setAnim(grabby_h_line, "opacity 0.2s ease-out");
+        ui.setAnim(grabby_h_line, "opacity 0.1s ease-out");
         ui.getElement(grabby_h_line).style.opacity = 0;
 
         ui.getElement(this.grabby_h).onmouseover = function(e) {
@@ -1096,8 +1197,8 @@ class panelSystem {
         ui.getElement(this.grabby_h).onmousedown = function(e) {
             input.storePos(panels.width, panels.height);
             action.setAction("resize_panels_h");
-            panels.openLayerPanel(false);
-            panels.openPropPanel(false);
+            panels.openLayerPanel();
+            panels.openPropPanel();
             ui.setAnim(panels.layer_panel, "height 0s ease-out");
             ui.setAnim(panels.prop_panel, "height 0s ease-out");
             ui.setAnim(panels.btn_new_group, "height 0s ease-out");
@@ -1122,8 +1223,16 @@ class panelSystem {
         this.width = nw;
         ui.getElement(this.layer_panel).style.width = nw + "px";
         ui.getElement(this.prop_panel).style.width = nw + "px";
-        ui.getElement(this.grabby_v).style.right = nw + 30 + "px";
+        ui.getElement(this.grabby_v).style.right = nw + 24 + "px";
         ui.getElement(this.grabby_h).style.width = nw + "px";
+    }
+
+    getWidth() {
+        return this.width + 24;
+    }
+
+    getRatio() {
+        return ui.getElement(this.layer_panel).style.height / ui.getElement(this.prop_panel).style.height;
     }
 
     hideLayerButtons() {
@@ -1139,6 +1248,8 @@ class panelSystem {
     }
 
     toggleLayerPanel() {
+        ui.setAnim(panels.layer_panel, "height 0.2s ease-out");
+        ui.setAnim(panels.prop_panel, "height 0.2s ease-out");
         if (panels.layer_panel_open) {
             panels.closeLayerPanel();
         } else {
@@ -1148,6 +1259,8 @@ class panelSystem {
     }
 
     togglePropPanel() {
+        ui.setAnim(panels.layer_panel, "height 0.2s ease-out");
+        ui.setAnim(panels.prop_panel, "height 0.2s ease-out");
         if (panels.prop_panel_open) {
             panels.closePropPanel();
         } else {
@@ -1165,7 +1278,7 @@ class panelSystem {
         }
         if (!this.prop_panel_open) {
             this.memorized_height = 0;
-            this.openPropPanel(false);
+            this.openPropPanel();
         }
     }
 
@@ -1185,7 +1298,7 @@ class panelSystem {
         }
         if (!this.layer_panel_open) {
             this.memorized_height = 0;
-            this.openLayerPanel(false);
+            this.openLayerPanel();
         }
     }
 
@@ -1195,6 +1308,142 @@ class panelSystem {
             ui.buttonSwitch(this.btn_prop_panel);
         }
     }
+
+    newSceneButton() {
+        layers.newSceneLayer();
+    }
+
+    scrollLayers(pos) {
+        this.lp_content_wrapper.scrollTop = pos;
+    }
+
+    scrollToLayer(layer) {
+        var scroll = this.lp_content_wrapper.scrollTop;
+        var y = layer.getLayerElement().getBoundingClientRect().top - 144 + scroll;
+        var h = this.height-58-49;
+
+        if (y < scroll) {
+            this.lp_content_wrapper.scroll({top: y, behavior: 'smooth'});
+        }
+        if (y > scroll + h - 1) {
+            this.lp_content_wrapper.scroll({top: y+layer.height-h, behavior: 'smooth'});
+        }
+        if (layer.getLayerElement().getBoundingClientRect().bottom-31 == this.lp_content_container.getBoundingClientRect().bottom) {
+            timers.setTimer(timers.scroll_timer, 20);
+        }
+    }
+}
+// ------------------------------------------------------------
+
+// ------------------------------------------------------------
+// Layer Manager
+//  Handles all layers (sorting, nesting, etc.)
+// ------------------------------------------------------------
+class layerManager {
+    constructor() {
+        this.initialize(...arguments);
+    }
+
+    initialize() {
+        this.scenes = [];
+        this.layers = [];
+        this.mz_windows = [];
+        this.selected = [];
+        this.active_scene = null;
+    }
+
+    newSceneLayer() {
+        this.deselectAllLayers();
+        var scene = new layerScene();
+        this.scenes.push(scene);
+        this.select(scene);
+        panels.scrollToLayer(scene);
+        return scene;
+    }
+
+    newWindowLayer() {
+        var renderObj = new MZWindow();
+        //renderObj.move(x, y);
+        this.mz_windows.push(renderObj);
+        var win = new layerWindow();
+        win.setRenderObject(renderObj);
+        this.select(win);
+        panels.scrollToLayer(win);
+        return win;
+    }
+
+    deselectAllScenes() {
+        for (var i = 0; i < this.scenes.length; i++) {
+            this.scenes[i].deselect();
+        }
+    }
+
+    deselectAllLayers() {
+        for (var i = 0; i < this.selected.length; i++) {
+            this.selected[i].deselect();
+        }
+        this.selected = [];
+    }
+
+    select(layer) {
+        if (layer.type == ltype.scn) {
+            if (layer != this.active_scene) {
+                this.deselectAllLayers();
+                this.deselectAllScenes();
+                this.active_scene = layer;
+                layer.select();
+            }
+        } else {
+            if (layer.scene_layer != this.active_scene) { 
+                this.deselectAllScenes();
+                this.select(layer.scene_layer);
+            }
+            this.deselectAllLayers();
+            this.selected.push(layer);
+            layer.select();
+            grid.refresh();
+        }
+    }
+
+    getScene() {
+        return this.active_scene;
+    }
+
+    getSceneContentsElem() {
+        return ui.getElement(this.active_scene.layer_contents);
+    }
+
+    getAllLayers() {
+        var check = [];
+        this.layers = [];
+        this.scenes.forEach(e => check.push(e));
+    
+        while (check.length > 0) {
+            this.layers.push(check[0]);
+            if (check[0].child_layers.length > 0) {
+                check[0].child_layers.forEach(e => check.push(e));
+            }
+            check.splice(0, 1);
+        }
+        console.log(this.layers);
+    }
+
+    mouseInObject() {
+        if (!mouseInStageArea()) { return; }
+        this.getAllLayers();
+        for (var i = 0; i < this.layers.length; i++) {
+            var obj = this.layers[i].render_object;
+            if (!obj) { continue; }
+            if (!obj.visible) { continue; }
+            var xx = obj.x + stage.x;
+            var x2 = obj.x + obj.width + stage.x;
+            var yy = obj.y + stage.y;
+            var y2 = obj.y + obj.height + stage.y;
+            if (mouse_x > xx && mouse_x < x2 && mouse_y > yy && mouse_y < y2) {
+                return obj;
+            }
+        }
+    }
 }
 // ------------------------------------------------------------
 
@@ -1202,25 +1451,488 @@ class panelSystem {
 // Layer Base
 //  The base class of all layers
 // ------------------------------------------------------------
+const lstate = {
+    non: 0,
+    hov: 1,
+    sel: 2
+}
+const ltype = {
+    scn: 0,
+    win: 1,
+    grp: 2,
+    img: 3
+};
 class layerBase {
+    constructor() {
+        //this.initialize(...arguments);
+    }
+
+    initialize() {
+        this.id = layer_id;
+        this.name = "";
+        this.height = 0;
+        this.content_height = 0;
+        this.off_y = 0;
+        this.depth = 0;
+        this.type = ltype.scn;
+
+        this.container = panels.lp_content_container;
+        this.layer_elem = null;
+        this.layer_contents = null;
+        this.layer_icon = null;
+        this.layer_depth = [];
+        this.render_object = null;
+
+        this.icon  = "layer-group-icon.svg";
+        this.nav   = "layer-nav-line.svg";
+
+        this.txt_col   = "#4a5568";
+        this.txt_col_h = "#6c7a8c";
+        this.txt_col_s = "#a0aec0";
+        this.bg_col    = "#1a1d2e";
+        this.bg_col_s  = "#333a4c";
+
+        this.parent_layer = null;
+        this.child_layers = [];
+
+        this.state = lstate.non;
+        this.open = false;
+
+        layer_id += 1;
+    }
+
+    createUI(parent) {
+        var depth_offset = this.depth * 22;
+
+        this.layer_elem = ui.createElement("layer_" + this.id, parent, "div");
+        ui.setPos(this.layer_elem, "left", "0px", "top", "0px");
+        ui.setSize(this.layer_elem, "100%", this.height + this.content_height + "px");
+        ui.setLayerStyle(this.layer_elem);
+
+        this.layer_contents = ui.createElement("layer_" + this.id + "contents", ui.getElement(this.layer_elem), "div");
+        ui.setPos(this.layer_contents, "left", "0px", "top", this.height + "px");
+        ui.setSize(this.layer_contents, "100%", "0px");
+
+        this.layer_icon = ui.createElement("layer_" + this.id + "icon", ui.getElement(this.layer_elem), "img");
+        ui.setPos(this.layer_icon, "left", 47 + depth_offset + "px", "top", this.off_y + 11 + "px");
+        ui.setSize(this.layer_icon, "23px", "23px");
+        ui.setImage(this.layer_icon, "layer-group-icon.svg");
+
+        this.layer_dropdown = ui.createElement("layer_" + this.id + "dropdown", ui.getElement(this.layer_elem), "img");
+        ui.setPos(this.layer_dropdown, "left", 17 + depth_offset + "px", "top", this.off_y + 11 + "px");
+        ui.setSize(this.layer_dropdown, "23px", "23px");
+        ui.setImage(this.layer_dropdown, "layer-closed.svg");
+        ui.makeButton(this.layer_dropdown, null);
+        ui.setButtonAlt(this.layer_dropdown, "layer-open.svg");
+
+        this.layer_name = ui.createElement("layer_" + this.id + "name", ui.getElement(this.layer_elem), "div");
+        ui.setPos(this.layer_name, "left", 82 + depth_offset + "px", "top", this.off_y + 13 + "px");
+        ui.addText(this.layer_name, this.name, "RMed", "12pt", this.txt_col);
+
+        for (var i = 0; i < this.depth; i++) {
+            this.layer_depth[i] = ui.createElement("layer" + this.id + "depth" + i, ui.getElement(this.layer_elem), "img");
+            ui.setPos(this.layer_depth[i], "left", 18+(21*i) + "px", "top", "0px");
+            ui.setSize(this.layer_depth[i], "20px", "31px");
+            ui.setImage(this.layer_depth[i], this.nav);
+        }
+
+        var thislayer = this;
+        ui.getElement(this.layer_dropdown).onmousedown = function(e) {
+            thislayer.toggleLayer();
+        }
+        ui.getElement(this.layer_elem).onmouseover = function(e) {
+            thislayer.mouseOverEvent(e);
+        }
+        ui.getElement(this.layer_elem).onmouseout = function(e) {
+            if (checkMouseOut(e, ui.getElement(thislayer.layer_elem))) {
+                thislayer.mouseOutEvent(e);
+            }
+        }
+        ui.getElement(this.layer_elem).onmousedown = function(e) {
+            thislayer.mouseDownEvent(e);
+        }
+        ui.getElement(this.layer_elem).onmouseup = function(e) {
+            thislayer.mouseUpEvent(e);
+        }
+    }
+
+    mouseOverEvent(e) {
+        if (this.state == lstate.non) {
+            this.state = lstate.hov;
+        }
+        this.updateUI();
+    }
+
+    mouseOutEvent(e) {
+        if (this.state == lstate.hov) {
+            this.state = lstate.non;
+        }
+        this.updateUI();
+    }
+
+    mouseDownEvent(e) {
+        var element_pos = ui.getElement(this.layer_elem).getBoundingClientRect();
+        if (e.clientY > element_pos.top + this.height) { return; }
+        layers.select(this);
+    }
+
+    mouseUpEvent(e) {
+
+    }
+
+    getLayerElement() {
+        return ui.getElement(this.layer_elem);
+    }
+
+    updateUI() {
+        switch (this.state) {
+            case lstate.non:
+                ui.getElement(this.layer_name).style.color = this.txt_col;
+                ui.setImage(this.layer_icon, this.icon);
+                ui.changeButtonImage(this.layer_dropdown, "layer-closed.svg");
+                ui.changeButtonAlt(this.layer_dropdown, "layer-open.svg");
+                break;
+            case lstate.hov:
+                ui.getElement(this.layer_name).style.color = this.txt_col_h;
+                ui.setImageHover(this.layer_icon, this.icon);
+                ui.changeButtonImage(this.layer_dropdown, "layer-closed-hover.svg");
+                ui.changeButtonAlt(this.layer_dropdown, "layer-open-hover.svg");
+                break;
+            case lstate.sel:
+                ui.getElement(this.layer_name).style.color = this.txt_col_s;
+                ui.setImageSelected(this.layer_icon, this.icon);
+                ui.changeButtonImage(this.layer_dropdown, "layer-closed-selected.svg");
+                ui.changeButtonAlt(this.layer_dropdown, "layer-open-selected.svg");
+                break;
+        }
+
+        if (this.open) {
+            ui.getElement(this.layer_elem).style.height = this.height + this.content_height + "px";
+        } else {
+            ui.getElement(this.layer_elem).style.height = this.height + "px";
+        }
+    }
+
+    changeHeight(height) {
+        ui.getElement(this.layer_elem).style.height = height + "px";
+    }
+
+    changeIcon(icon) {
+        ui.setImage(this.layer_icon, icon);
+    }
+
+    changeName(name) {
+        ui.getElement(this.layer_name).innerText = name;
+    }
+
+    select() {
+        this.state = lstate.sel;
+        this.updateUI();
+    }
+
+    deselect() {
+        this.state = lstate.non;
+        this.updateUI();
+    }
+
+    nest(layer) {
+        this.child_layers.push(layer);
+        layer.parent_layer = this;
+        this.content_height += layer.height;
+        if (layer.open) { this.content_height += layer.content_height; }
+        if (this.open) { 
+            this.updateUI();
+        }
+        else {
+            this.openLayer();
+        }
+    }
+
+    toggleLayer() {
+        if (this.open) {
+            this.closeLayer();
+        } else if (this.child_layers.length > 0) {
+            this.openLayer();
+        }
+    }
+
+    openLayer() {
+        if (!this.open) {
+            ui.buttonSwitch(this.layer_dropdown);
+            this.open = true;
+            this.updateUI();
+        }
+    }
+     
+    closeLayer() {
+        if (this.open) {
+            ui.buttonSwitch(this.layer_dropdown);
+            this.open = false;
+            this.updateUI();
+        }
+    }
+}
+// ------------------------------------------------------------
+
+// ------------------------------------------------------------
+// Layer Scene
+//  Contains window and image layers that make up a scene
+// ------------------------------------------------------------
+var scene_layer_num = 0;
+class layerScene extends layerBase {
+    constructor() {
+        super();
+        this.initialize(...arguments);
+    }
+
+    initialize() {
+        super.initialize();
+        scene_layer_num += 1;
+
+        this.icon = "layer-scene-icon.svg";
+        this.icon_edit = "layer-edit-icon.svg";
+
+        this.txt_col_e = "#a0aec0";
+        this.bg_col    = "";
+        this.bg_col_s  = "";
+
+        this.type = ltype.scn;
+        this.name = "Scene " + scene_layer_num;
+        this.height = 44;
+        this.content_height = 0;
+
+        this.layer_edit = null;
+
+        this.createUI(this.container);
+    }
+
+    createUI(parent) {
+        super.createUI(parent);
+        this.changeHeight(this.height);
+        this.changeIcon(this.icon);
+        this.changeName(this.name);
+
+        this.layer_edit = ui.createElement("layer_" + this.id + "edit", ui.getElement(this.layer_elem), "img");
+        ui.setPos(this.layer_edit, "right", "24px", "top", "11px");
+        ui.setSize(this.layer_edit, "23px", "23px");
+        ui.setImage(this.layer_edit, this.icon_edit);
+        ui.hide(this.layer_edit);
+    }
+
+    select() {
+        super.select();
+        ui.getElement(this.layer_edit).style.visibility = "visible";
+    }
+
+    deselect() {
+        super.deselect();
+        ui.getElement(this.layer_edit).style.visibility = "hidden";
+    }
+}
+// ------------------------------------------------------------
+
+// ------------------------------------------------------------
+// Layer Window
+//  Represents MZ windows in the layer panel
+// ------------------------------------------------------------
+var window_layer_num = 0;
+class layerWindow extends layerBase {
+    constructor() {
+        super();
+        this.initialize(...arguments);
+    }
+
+    initialize() {
+        super.initialize();
+        window_layer_num += 1;
+
+        this.txt_col   = "#333a4c";
+        this.txt_col_h = "#4a5568";
+        this.txt_col_s = "#e2e8f0";
+
+        this.icon = "layer-window-icon.svg";
+    
+        this.type = ltype.win;
+        this.name = "Window " + window_layer_num;
+        this.height = 31;
+        this.off_y = -7;
+        this.depth = 1;
+    
+        this.visible = true;
+        this.locked = false;
+
+        this.scene_layer = layers.getScene();
+        this.createUI(layers.getSceneContentsElem());
+        layers.getScene().nest(this);
+    }
+
+    createUI(parent) {
+        super.createUI(parent);
+        this.changeHeight(this.height);
+        this.changeIcon(this.icon);
+        this.changeName(this.name);
+
+        ui.setBgColor(this.layer_elem, "#1a1d2e");
+
+        this.layer_visible = ui.createElement("layer_" + this.id + "eye", ui.getElement(this.layer_elem), "img");
+        ui.setPos(this.layer_visible, "right", "23px", "top", "5px");
+        ui.setSize(this.layer_visible, "23px", "23px");
+        ui.setImage(this.layer_visible, "layer-visible.svg");
+        ui.makeButton(this.layer_visible, null);
+        ui.setButtonAlt(this.layer_visible, "layer-invisible.svg");
+
+        this.layer_lock = ui.createElement("layer_" + this.id + "lock", ui.getElement(this.layer_elem), "img");
+        ui.setPos(this.layer_lock, "right", "45px", "top", "6px");
+        ui.setSize(this.layer_lock, "23px", "23px");
+        ui.setImage(this.layer_lock, "layer-unlocked.svg");
+        ui.makeButton(this.layer_lock, null);
+        ui.setButtonAlt(this.layer_lock, "layer-locked.svg");
+
+        var thislayer = this;
+        ui.getElement(this.layer_visible).onmousedown = function(e) {
+            thislayer.toggleHide();
+        }
+        ui.getElement(this.layer_lock).onmousedown = function(e) {
+            thislayer.toggleLock();
+        }
+    }
+
+    updateUI() {
+        super.updateUI();
+        switch (this.state) {
+            case lstate.non:
+                ui.changeButtonImage(this.layer_visible, "layer-visible.svg");
+                ui.changeButtonAlt(this.layer_visible, "layer-invisible.svg");
+                ui.changeButtonImage(this.layer_lock, "layer-unlocked.svg");
+                ui.changeButtonAlt(this.layer_lock, "layer-locked.svg");
+                break;
+            case lstate.hov:
+                ui.changeButtonImage(this.layer_visible, "layer-visible-hover.svg");
+                ui.changeButtonAlt(this.layer_visible, "layer-invisible-hover.svg");
+                ui.changeButtonImage(this.layer_lock, "layer-unlocked-hover.svg");
+                ui.changeButtonAlt(this.layer_lock, "layer-locked-hover.svg");
+                break;
+            case lstate.sel:
+                ui.changeButtonImage(this.layer_visible, "layer-visible-selected.svg");
+                ui.changeButtonAlt(this.layer_visible, "layer-invisible-selected.svg");
+                ui.changeButtonImage(this.layer_lock, "layer-unlocked-selected.svg");
+                ui.changeButtonAlt(this.layer_lock, "layer-locked-selected.svg");
+                break;
+        }
+    }
+
+    toggleHide() {
+        ui.buttonSwitch(this.layer_visible);
+    }
+
+    toggleLock() {
+        ui.buttonSwitch(this.layer_lock);
+    }
+
+    select() {
+        super.select();
+        ui.setBgColor(this.layer_elem, "#333a4c");
+        for (var i = 0; i < this.depth; i++) {
+            ui.setImageSelected(this.layer_depth[i], this.nav);
+        }
+    }
+
+    deselect() {
+        super.deselect();
+        ui.setBgColor(this.layer_elem, "#1a1d2e");
+        for (var i = 0; i < this.depth; i++) {
+            ui.setImage(this.layer_depth[i], this.nav);
+        }
+    }
+
+    setRenderObject(render_object) {
+        this.render_object = render_object;
+        render_object.parent_layer = this;
+    }
+}
+
+// ------------------------------------------------------------
+// MZ Window system
+// ------------------------------------------------------------
+class MZWindow {
     constructor() {
         this.initialize(...arguments);
     }
 
     initialize() {
-        this.id = 0;
-        this.name = "";
+        this.x = 0;
+        this.y = 0;
+        this.off_x = 0;
+        this.off_y = 0;
+        this.previous_x = 0;
+        this.previous_y = 0;
+        this.previous_w = 0;
+        this.previous_h = 0;
+        this.width = 0;
         this.height = 0;
+        this.skin = null;
 
-        this.container = ui.getElement(panels.lp_content_container);
-        this.layer_elem = null;
+        this.padding = 12;
+        this.margin = 4;
+        this.parent_layer = null;
+        this.visible = true;
+
+        this.container = new PIXI.Container();
+        this.frameSprite = new PIXI.Graphics();
+        this.backSprite = new PIXI.Graphics();
+        this.container.addChild(this.frameSprite);
+        this.container.addChild(this.backSprite);
+
+        stage.addChild(this.container);
     }
 
-    createUI() {
-        this.layer_elem = ui.createElement("layer_panel", this.container, "div");
-        ui.setPos(this.layer_panel, "left", "0px", "top", "0px");
-        ui.setSize(this.layer_panel, "100%", this.height + "px");
-        ui.setPanelStyle(this.layer_panel);
+    move(x, y) {
+        this.container.x = x;
+        this.container.y = y;
+        this.x = x;
+        this.y = y;
+    }
+
+    resize(w, h) {
+        this.width = w;
+        this.height = h;
+        this.drawBack();
+    }
+
+    destroy() {
+        this.container.parent.removeChild(this.container);
+        const options = { children: true, texture: true };
+        this.container.destroy(this.container, options);
+        //for (var i = 0; i < mz_window.length; i++) {
+        //    if (mz_window[i] == this) {
+        //        mz_window.splice(i, 1);
+        //    }
+        //}
+    }
+
+    drawBack() {
+        this.backSprite.clear();
+
+        // Test box (kill this guy later)
+        //this.backSprite.lineStyle(2, 0x3b3e51);
+        this.backSprite.alpha = 0.3;
+        this.backSprite.beginFill(0x3b3e51);
+        this.backSprite.drawRect(0, 0, this.width, this.height);
+        this.backSprite.endFill();
+    }
+
+    addChild(child) {
+        this.container.addChild(child);
+    }
+
+    hide() {
+        this.container.visible = false;
+        this.visible = false;
+    }
+
+    unhide() {
+        this.container.visible = true;
+        this.visible = true;
     }
 }
 // ------------------------------------------------------------
@@ -1355,7 +2067,10 @@ function createRenderer() {
     renderer.view.style.height = '100vh';
     renderer.view.style.top = 0;
     renderer.view.style.left = 0;
-    renderer.backgroundColor = 0x0F0E1C;
+    //renderer.backgroundColor = 0x0F0E1C;
+    // NOTE: Not sure how this works but the commented line above is
+    // needed for the bg to work on Linux, but it breaks it on Windows
+
     // Move container to the center
     stage.x = renderer.width / 2;
     stage.y = renderer.height / 2;
@@ -1374,6 +2089,20 @@ function createRenderer() {
 
 function resizeWindow() {
     renderer.resize(window.innerWidth, window.innerHeight);
+
+    ui.setAnim(panels.layer_panel, "height 0s ease-out");
+    ui.setAnim(panels.prop_panel, "height 0s ease-out");
+    //panels.openLayerPanel();
+    //panels.openPropPanel();
+    //var nh = clamp(window.innerHeight/2 - 50, window.innerHeight-327, 155);
+    if (!panels.prop_panel_open) {
+        var nh = window.innerHeight - 172 - 58;
+    } else if (!panels.layer_panel_open) {
+        var nh = 58;
+    } else {
+        var nh = clamp(window.innerHeight/2 - 50, window.innerHeight-327, 155);
+    }
+    panels.resizeHeight(nh);
 }
 
 var sprite_sheet = null;
@@ -1382,7 +2111,7 @@ var sprite_sheet_loaded = false;
 function spriteSheetSetup() {
     sprite_sheet = loader.resources[img_path + "spritesheet.json"].spritesheet;
     sprite_sheet_loaded = true;
-    render_grid.createControlSprites();
+    grid.createControlSprites();
 }
 // ------------------------------------------------------------
 
@@ -1400,14 +2129,22 @@ window.onload = function() {
     // Project
     project = new projectSystem();
 
+    // Create the program UI
     createUI();
 
     // Pixi workspace
     createRenderer();
-    render_grid = new gridSystem();
+    grid = new gridSystem();
 
-    // Layers
+    // Layer and properties panels
     panels = new panelSystem();
+
+    // Timer System
+    timers = new timerSystem();
+
+    // Layer system
+    layers = new layerManager();
+    layers.newSceneLayer();
 
     // Main update loop
     update();
@@ -1419,6 +2156,7 @@ window.onload = function() {
 // ------------------------------------------------------------
 function update() {
     input.update();
+    timers.update();
     renderer.render(stage);
     requestAnimationFrame(() => update()); // Do it again
 }
