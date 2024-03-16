@@ -2,7 +2,7 @@
 // Mushi Menu Maker
 //
 // The ultimate menu maker for RMMZ (and maybe MV someday)
-// Sorry everything is in one big file, good luck! :P
+// Good luck!
 //
 // (Detailed info is here)
 //=============================================================================
@@ -1353,7 +1353,6 @@ class layerManager {
     }
 
     newSceneLayer() {
-        this.deselectAllLayers();
         var scene = new layerScene();
         this.scenes.push(scene);
         this.select(scene);
