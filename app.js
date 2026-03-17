@@ -57,6 +57,13 @@ function checkMouseOut(e, element) {
     return true;
 }
 
+function resizeHandleHoverCheck() {
+    if (action.noAction() && layers.selected.length > 0) {
+        grid.handleHover(input.mouse_pos.x, input.mouse_pos.y);
+        grid.setControlSprites();
+    }
+}
+
 // ------------------------------------------------------------
 // Input Manager: 
 //   System to handle key presses
@@ -134,6 +141,16 @@ class inputManager {
             }
         }
         this.updateMousePos();
+
+        // Check for hover over resize handles
+        // (Maybe need a better place for this)
+        resizeHandleHoverCheck();
+        /*
+        if (layers.selected.length > 0) {
+            grid.handleHover(this.mouse_pos.x, this.mouse_pos.y);
+            grid.setControlSprites();
+        }
+        */
     }
 
     isPressed(key) {
@@ -150,7 +167,8 @@ class inputManager {
         key.pressfunc = undefined;
         key.releasefunc = undefined;
         key.holdfunc = undefined;
-        // The `downHandler`
+
+
         key.downHandler = event => {
             var check;
             if (type == "keyboard") { check = event.key; } 
@@ -163,7 +181,7 @@ class inputManager {
             }
         };
       
-        // The `upHandler`
+
         key.upHandler = event => {
             var check;
             if (type == "keyboard") { check = event.key; } 
@@ -273,9 +291,9 @@ class inputManager {
 // Input Manager default key functions
 // ------------------------------------------------------------
 function keyPressTest(key) {
-    //console.log("Key " + key + " pressed!");
-    //console.log("Mouse X: " + input.mouse_pos.x + " Mouse Y: " + input.mouse_pos.y);
-    layers.getAllLayers();
+    console.log("Key " + key + " pressed!");
+    console.log("Mouse X: " + input.mouse_pos.x + " Mouse Y: " + input.mouse_pos.y);
+    //layers.getAllLayers();
 }
 
 function mbMiddlePress() {
@@ -300,12 +318,29 @@ function mbMiddleRelease() {
 
 function mbLeftPress() {
     input.updateClickPos();
+    // Use draw tool to make window
     if (action.checkTool("draw_tool")) {
         if (!mouseInStageArea(input.mouse_pos.x, input.mouse_pos.y)) { return; }
         action.setAction("window_draw");
         var win_layer = layers.newWindowLayer();
         action.addObj({type:"win_create", layer:win_layer, win:win_layer.render_object, x:0, y:0, w:0, h:0});
         win_layer.render_object.move(input.mouse_pos.sx, input.mouse_pos.sy);
+    }
+
+    // Move tool functions
+    if (action.checkTool("move_tool")) {
+        if (!mouseInStageArea(input.mouse_pos.x, input.mouse_pos.y)) { return; }
+        var obj = layers.mouseInObject(input.mouse_pos.x, input.mouse_pos.y);
+        if (obj) {
+            if (obj.parent_layer.selected) {
+                action.setAction("window_move");
+            } else {
+                layers.select(obj.parent_layer);
+            }
+        } else {
+            layers.deselectAllLayers();
+            grid.refreshSelection();
+        }
     }
 }
 
@@ -351,6 +386,9 @@ function mbLeftRelease() {
         ui.setAnim(panels.btn_new_scene, "height 0.2s ease-out");
         ui.setAnim(panels.btn_delete_layer, "height 0.2s ease-out");
     }
+    if (action.checkAction("window_draw")) {
+
+    }
     action.clearAction();
     grid.refreshSelection();
 }
@@ -387,6 +425,7 @@ class actionSystem {
     }
 
     clearAction() {
+        console.log(this.action);
         if (this.action.name != "" && this.action.store) {
             this.history.push(this.action);
         }
@@ -586,9 +625,9 @@ class gridSystem {
         }
     }
 
-    handleHover(mx, my) {
+    handleHover(mouse_x, mouse_y) {
         for (var i = 0; i < this.handle.length; i++) {
-            if (Math.abs(mx - stage.x - this.handle[i].position.x) < 15 && Math.abs(my - stage.y - this.handle[i].position.y) < 15) {
+            if (Math.abs(mouse_x - stage.x - this.handle[i].position.x) < 15 && Math.abs(mouse_y - stage.y - this.handle[i].position.y) < 15) {
                 this.handle_hover = i;
                 return i;
             }
@@ -907,11 +946,13 @@ class UISystem {
         this.element[element].onmouseover = function (e) {
             button[btn.hvr] = true;
             ui.updateButton(element);
+            this.style.cursor = 'pointer';
         };
 
         this.element[element].onmouseout = function (e) {
             button[btn.hvr] = false;
             ui.updateButton(element);
+            this.style.cursor = 'default';
         };
 
         this.element[element].onclick = function (e) {
@@ -1168,10 +1209,12 @@ class panelSystem {
         ui.getElement(grabby_v_line).style.opacity = 0;
 
         ui.getElement(this.grabby_v).onmouseover = function(e) {
-            ui.getElement(grabby_v_line).style.opacity = 1;
+            ui.getElement(grabby_v_line).style.opacity = 0.25;
+            this.style.cursor = 'ew-resize';
         }
         ui.getElement(this.grabby_v).onmouseout = function(e) {
             ui.getElement(grabby_v_line).style.opacity = 0;
+            this.style.cursor = 'default';
         }
         ui.getElement(this.grabby_v).onmousedown = function(e) {
             input.storePos(panels.width, panels.height);
@@ -1189,10 +1232,12 @@ class panelSystem {
         ui.getElement(grabby_h_line).style.opacity = 0;
 
         ui.getElement(this.grabby_h).onmouseover = function(e) {
-            ui.getElement(grabby_h_line).style.opacity = 1;
+            ui.getElement(grabby_h_line).style.opacity = 0.25;
+            this.style.cursor = 'ns-resize';
         }
         ui.getElement(this.grabby_h).onmouseout = function(e) {
             ui.getElement(grabby_h_line).style.opacity = 0;
+            this.style.cursor = 'default';
         }
         ui.getElement(this.grabby_h).onmousedown = function(e) {
             input.storePos(panels.width, panels.height);
@@ -1428,8 +1473,8 @@ class layerManager {
         console.log(this.layers);
     }
 
-    mouseInObject() {
-        if (!mouseInStageArea()) { return; }
+    mouseInObject(mouse_x, mouse_y) {
+        //if (!mouseInStageArea()) { return; }
         this.getAllLayers();
         for (var i = 0; i < this.layers.length; i++) {
             var obj = this.layers[i].render_object;

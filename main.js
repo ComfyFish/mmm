@@ -4,8 +4,8 @@ const ipc = ipcMain
 
 function createWindow () {
   const win = new BrowserWindow({
-    width: 1200,
-    height: 700,
+    width: 1920,
+    height: 1080,
     transparent: true,
     frame: false,
     titleBarStyle: 'hidden',
