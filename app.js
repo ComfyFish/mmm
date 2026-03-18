@@ -57,13 +57,6 @@ function checkMouseOut(e, element) {
     return true;
 }
 
-function resizeHandleHoverCheck() {
-    if (action.noAction() && layers.selected.length > 0) {
-        grid.handleHover(input.mouse_pos.x, input.mouse_pos.y);
-        grid.setControlSprites();
-    }
-}
-
 // ------------------------------------------------------------
 // Input Manager: 
 //   System to handle key presses
@@ -274,6 +267,29 @@ class inputManager {
         this.registerPressFunction("a", keyPressTest);
         //this.registerHoldFunction("a", keyPressTest);
 
+        this.key_ctrl = this.addKey("keyboard", "Control");
+        this.registerPressFunction("Control", ctrlPress);
+        this.registerReleaseFunction("Control", ctrlRelease);
+
+        this.key_delete = this.addKey("keyboard", "Delete");
+        this.registerPressFunction("Delete", deletePress);
+
+        this.key_shift = this.addKey("keyboard", "Shift");
+        this.registerPressFunction("Shift", shiftPress);
+        this.registerReleaseFunction("Shift", shiftRelease);
+
+        this.addKey("keyboard", "ArrowLeft");
+        this.registerPressFunction("ArrowLeft", arrowLeftPress);
+
+        this.addKey("keyboard", "ArrowRight");
+        this.registerPressFunction("ArrowRight", arrowRightPress);
+
+        this.addKey("keyboard", "ArrowUp");
+        this.registerPressFunction("ArrowUp", arrowUpPress);
+
+        this.addKey("keyboard", "ArrowDown");
+        this.registerPressFunction("ArrowDown", arrowDownPress);
+
         this.addKey("mouse", 1);
         this.registerPressFunction(1, mbMiddlePress);
         this.registerHoldFunction(1, mbMiddleHold);
@@ -290,12 +306,58 @@ class inputManager {
 // ------------------------------------------------------------
 // Input Manager default key functions
 // ------------------------------------------------------------
+function resizeHandleHoverCheck() {
+    if (action.noAction() && layers.selected.length > 0) {
+        grid.handleHover(input.mouse_pos.x, input.mouse_pos.y);
+        grid.setControlSprites();
+    }
+}
+
 function keyPressTest(key) {
     console.log("Key " + key + " pressed!");
     console.log("Mouse X: " + input.mouse_pos.x + " Mouse Y: " + input.mouse_pos.y);
     //layers.getAllLayers();
 }
 
+// Modifier keys
+function ctrlPress() {
+    action.addMod(MOD.CTRL);
+}
+
+function ctrlRelease() {
+    action.removeMod(MOD.CTRL)
+}
+
+function shiftPress() {
+    action.addMod(MOD.SHFT);
+}
+
+function shiftRelease() {
+    action.removeMod(MOD.SHFT)
+}
+
+function deletePress() {
+    // Delete me, delete me :)
+}
+
+// Nudge layers
+function arrowLeftPress() {
+    layers.moveSelectedLayers(-10, 0);
+}
+
+function arrowUpPress() {
+    layers.moveSelectedLayers(0, -10);
+}
+
+function arrowRightPress() {
+    layers.moveSelectedLayers(10, 0);
+}
+
+function arrowDownPress() {
+    layers.moveSelectedLayers(0, 10);
+}
+
+// Mouse functions
 function mbMiddlePress() {
     if (action.noAction()) { 
         action.setAction("pan_viewport");
@@ -332,6 +394,7 @@ function mbLeftPress() {
         if (!mouseInStageArea(input.mouse_pos.x, input.mouse_pos.y)) { return; }
         var obj = layers.mouseInObject(input.mouse_pos.x, input.mouse_pos.y);
         if (obj) {
+            //if (action.checkAction("multi_select"))
             if (obj.parent_layer.selected) {
                 action.setAction("window_move");
             } else {
@@ -340,6 +403,7 @@ function mbLeftPress() {
         } else {
             layers.deselectAllLayers();
             grid.refreshSelection();
+            action.setAction("selection_box");
         }
     }
 }
@@ -398,15 +462,22 @@ function mbLeftRelease() {
 // Action System: 
 //   Handles interactive actions, tools, and history states
 // ------------------------------------------------------------
+const MOD = {
+    NONE: 0,
+    CTRL: 1,
+    SHFT: 2
+};
+
 class actionSystem {
     constructor() {
         this.initialize(...arguments);
     }
 
     initialize() {
-        this.action = {name:"", store:false, obj:null};
-        this.tool = null;
-        this.history = [];
+        this.action    = {name:"", store:false, obj:null};
+        this.tool      = null;
+        this.mod_flags = MOD.NONE;
+        this.history   = [];
     }
 
     setAction(action) {
@@ -450,6 +521,17 @@ class actionSystem {
 
     clearTool() {
         this.tool = null
+    }
+
+    addMod(mod) {
+        this.mod_flags |= mod;
+    }
+    removeMod(mod) {
+        this.mod_flags &= ~mod;
+    }
+
+    checkMod(mod) {
+        return this.mod_flags & mod === mod;
     }
 
     undoAction() {
@@ -1486,6 +1568,15 @@ class layerManager {
             if (mouse_x > xx && mouse_x < x2 && mouse_y > yy && mouse_y < y2) {
                 return obj;
             }
+        }
+    }
+
+    moveSelectedLayers(move_x, move_y) {
+        for (var i = 0; i < this.selected.length; i++) {
+            var win = this.selected[i].render_object;
+            if (!win.visible) { continue; }
+            win.move(win.x + move_x, win.y + move_y);
+            grid.refreshSelection();
         }
     }
 }
