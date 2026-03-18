@@ -15,6 +15,7 @@ const loader = PIXI.Loader.shared;
 const img_path = "assets/img/";
 
 var input = null;
+var settings = null;
 var action = null;
 var renderer = null;
 var stage = null;
@@ -55,6 +56,22 @@ function checkMouseOut(e, element) {
     if (e.relatedTarget.parentElement == element) { return false; }
     if (e.relatedTarget.parentElement.parentElement == element) { return false; }
     return true;
+}
+
+// ------------------------------------------------------------
+// Setting: 
+//   Class to handle global settings
+//   Thought it would be nice to have them all in one
+//   easy to find class, but maybe it's silly. >_<
+// ------------------------------------------------------------
+class settingsSystem {
+    constructor() {
+        this.initialize(...arguments);
+    }
+
+    initialize() {
+        this.layer_nudge = 10;
+    }
 }
 
 // ------------------------------------------------------------
@@ -362,19 +379,19 @@ function deletePress() {
 
 // Nudge layers
 function arrowLeftPress() {
-    layers.moveSelectedLayers(-10, 0);
+    layers.moveSelectedLayers(-settings.layer_nudge, 0);
 }
 
 function arrowUpPress() {
-    layers.moveSelectedLayers(0, -10);
+    layers.moveSelectedLayers(0, -settings.layer_nudge);
 }
 
 function arrowRightPress() {
-    layers.moveSelectedLayers(10, 0);
+    layers.moveSelectedLayers(settings.layer_nudge, 0);
 }
 
 function arrowDownPress() {
-    layers.moveSelectedLayers(0, 10);
+    layers.moveSelectedLayers(0, settings.layer_nudge);
 }
 
 // Mouse functions
@@ -580,7 +597,7 @@ class actionSystem {
     }
 
     checkMod(mod) {
-        return this.mod_flags & mod === mod;
+        return (this.mod_flags & mod) === mod;
     }
 
     undoAction() {
@@ -1591,17 +1608,15 @@ class layerManager {
         if (layer.selected()) {
             layer.deselect();
             this.selected.splice(index, 1);
-            console.log("DESELECT!");
         } else {
             if (layer.scene_layer != this.active_scene) {
                 //this.deselectAllLayers();
-                console.log(layer.scene_layer);
-                console.log(this.active_scene);
+                //console.log(layer.scene_layer);
+                //console.log(this.active_scene);
                 this.select(layer.scene_layer);
             }
             layer.select();
             this.selected.push(layer);
-            console.log("SELECT!");
             console.log(this.selected);
         }
         grid.refreshSelection();
@@ -2340,14 +2355,11 @@ function spriteSheetSetup() {
 // PROGRAM START
 // ------------------------------------------------------------
 window.onload = function() {
-    // Main UI
-    ui = new UISystem();
 
-    // Input system
+    ui = new UISystem();
+    settings = new settingsSystem();
     input = new inputManager();
     action = new actionSystem();
-
-    // Project
     project = new projectSystem();
 
     // Create the program UI
@@ -2357,13 +2369,8 @@ window.onload = function() {
     createRenderer();
     grid = new gridSystem();
 
-    // Layer and properties panels
     panels = new panelSystem();
-
-    // Timer System
     timers = new timerSystem();
-
-    // Layer system
     layers = new layerManager();
     layers.newSceneLayer();
 
