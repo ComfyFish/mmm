@@ -43,7 +43,9 @@ function mouseInArea(mouse_x, mouse_y, area) {
     return false;
 }
 
-function mouseInStageArea(mouse_x, mouse_y) {
+function mouseInStageArea() {
+    var mouse_x = input.mouse_pos.x;
+    var mouse_y = input.mouse_pos.y;
     if (mouse_x < 83) { return false; }
     if (mouse_y < 80) { return false; }
     if (mouse_x > window.innerWidth - panels.getWidth() - 21) { return false; }
@@ -56,6 +58,11 @@ function checkMouseOut(e, element) {
     if (e.relatedTarget.parentElement == element) { return false; }
     if (e.relatedTarget.parentElement.parentElement == element) { return false; }
     return true;
+}
+
+function normalize(val, max, min) {
+    if (max-min == 0) { return 0; }
+    return (val-min)/(max-min);
 }
 
 // ------------------------------------------------------------
@@ -244,9 +251,11 @@ class inputManager {
     }
 
     distanceToClick() {
-        var dist = {x:0, y:0};
-        dist.x = this.mouse_pos.x - this.click_pos.x;
-        dist.y = this.mouse_pos.y - this.click_pos.y;
+        var dist = {x:0, y:0, sx:0, sy:0};
+        dist.x  = this.mouse_pos.x - this.click_pos.x;
+        dist.y  = this.mouse_pos.y - this.click_pos.y;
+        dist.sx = this.mouse_pos.sx - this.click_pos.sx;
+        dist.sy = this.mouse_pos.sy - this.click_pos.sy;
         return dist;
     }
 
@@ -419,7 +428,7 @@ function mbLeftPress() {
     input.updateClickPos();
     // Use draw tool to make window
     if (action.checkTool("draw_tool")) {
-        if (!mouseInStageArea(input.mouse_pos.x, input.mouse_pos.y)) { return; }
+        if (!mouseInStageArea()) { return; }
         action.setAction("window_draw");
         var win_layer = layers.newWindowLayer();
         action.addObj({type:"win_create", layer:win_layer, win:win_layer.render_object, x:0, y:0, w:0, h:0});
@@ -428,21 +437,30 @@ function mbLeftPress() {
 
     // Move tool functions
     if (action.checkTool("move_tool")) {
-        if (!mouseInStageArea(input.mouse_pos.x, input.mouse_pos.y)) { return; }
+        if (!mouseInStageArea()) { return; }
+        // Object resize
+        if (grid.handle_hover != -1) {
+            action.setAction("object_resize");
+            grid.storeBoundsFromHandle();
+            return;
+        }
+
+        // General moving functions
         var obj = layers.mouseInObject(input.mouse_pos.x, input.mouse_pos.y);
         if (obj) {
             if (action.checkMod(MOD.CTRL) || action.checkMod(MOD.SHFT)) {
                 layers.toggleSelect(obj.parent_layer);
             } else {
+                if (!obj.parent_layer.selected()) {
+                    layers.select(obj.parent_layer);
+                    panels.scrollToLayer(obj.parent_layer);
+                }
                 if (obj.parent_layer.selected()) {
                     for (var i = 0; i < layers.selected.length; i++) {
                         var win = layers.selected[i].render_object;
                         win.setMouseOffset();
                     }
-                    action.setAction("window_move");
-                } else {
-                    layers.select(obj.parent_layer);
-                    panels.scrollToLayer(obj.parent_layer);
+                    action.setAction("object_move");
                 }
             }
         } else {
@@ -487,6 +505,25 @@ function mbLeftHold() {
             grid.refreshSelection();
         }
     }
+    if (action.checkAction("selection_box")) {
+        // Selection box to select multiple windows
+        var x1 = input.click_pos.sx;
+        var y1 = input.click_pos.sy;
+        var x2 = input.mouse_pos.sx;
+        var y2 = input.mouse_pos.sy;
+        grid.drawDragSelection(x1, y1, x2, y2);
+        layers.deselectAllLayers();
+        var window_selection = layers.windowsInBox(x1, y1, x2, y2);
+        for (var i = 0; i < window_selection.length; i++) {
+            var layer = window_selection[i].parent_layer;
+            if (i == 0) { panels.scrollToLayer(layer); }
+            if (!layer.selected()) { layers.toggleSelect(layer); }
+        }
+        grid.refreshSelection();
+    }
+    if (action.checkAction("object_resize")) {
+        grid.resizeSelection();
+    }
 }
 
 function mouseDragStart() {
@@ -497,7 +534,7 @@ function mouseDragStart() {
 }
 
 function mouseDrag() {
-    if (action.checkAction("window_move")) {
+    if (action.checkAction("object_move")) {
         var mp = input.getMousePos();
         for (var i = 0; i < layers.selected.length; i++) {
             var obj = layers.selected[i].render_object;
@@ -516,7 +553,10 @@ function mbLeftRelease() {
         ui.setAnim(panels.btn_delete_layer, "height 0.2s ease-out");
     }
     if (action.checkAction("window_draw")) {
-
+        // Update the size of the window in action history for proper undo/redo
+    }
+    if (action.checkAction("selection_box")) {
+        grid.clearDragSelection();
     }
     action.dragging = false;
     action.clearAction();
@@ -636,10 +676,11 @@ class gridSystem {
         this.drag_selection = new PIXI.Graphics();
         stage.addChild(this.drag_selection);
         this.selection_bounds = { x1: 0, y1: 0, x2: 0, y2: 0 };
-        this.selection_previous = { x1: 0, y1: 0, x2: 0, y2: 0 };
+        this.reference_bounds = { x1: 0, y1: 0, x2: 0, y2: 0 };
 
         this.handle = [];
         this.handle_hover = -1;
+        this.handle_offset = {x: 0, y: 0};
         this.guide = [];
         this.guides = new PIXI.Graphics();
         stage.addChild(this.guides);
@@ -782,6 +823,94 @@ class gridSystem {
         }
         this.handle_hover = -1;
         return -1;
+    }
+
+    storeBoundsFromHandle() {
+        this.reference_bounds.x1 = this.handle[this.handle_hover].position.x;
+        this.reference_bounds.y1 = this.handle[this.handle_hover].position.y;
+        this.handle_offset.x = input.mouse_pos.sx - this.reference_bounds.x1;
+        this.handle_offset.y = input.mouse_pos.sy - this.reference_bounds.y1;
+
+        switch (grid.handle_hover) {
+            case 0:
+                this.reference_bounds.x2 = this.handle[7].position.x;
+                this.reference_bounds.y2 = this.handle[7].position.y;
+                break;
+            case 1:
+                this.reference_bounds.x2 = this.handle[this.handle_hover].position.x;
+                this.reference_bounds.y2 = this.handle[6].position.y;
+                break;
+            case 2:
+                this.reference_bounds.x2 = this.handle[5].position.x;
+                this.reference_bounds.y2 = this.handle[5].position.y;
+                break;
+            case 3:
+                this.reference_bounds.x2 = this.handle[4].position.x;
+                this.reference_bounds.y2 = this.handle[this.handle_hover].position.y;
+                break;
+            case 4:
+                this.reference_bounds.x2 = this.handle[3].position.x;
+                this.reference_bounds.y2 = this.handle[this.handle_hover].position.y;
+                break;
+            case 5:
+                this.reference_bounds.x2 = this.handle[2].position.x;
+                this.reference_bounds.y2 = this.handle[2].position.y;
+                break;
+            case 6:
+                this.reference_bounds.x2 = this.handle[this.handle_hover].position.x;
+                this.reference_bounds.y2 = this.handle[1].position.y;
+                break;
+            case 7:
+                this.reference_bounds.x2 = this.handle[0].position.x;
+                this.reference_bounds.y2 = this.handle[0].position.y;
+                break;
+        }
+
+        for (var i = 0; i < layers.selected.length; i++) {
+            var obj = layers.selected[i].render_object;
+            obj.store.x = obj.x;
+            obj.store.y = obj.y;
+            obj.store.w = obj.width;
+            obj.store.h = obj.height;
+        }
+    }
+
+    resizeSelection() {
+        var dist = input.distanceToClick();
+        var bx, by, bw, bh, sx1, sy1, sx2, sy2, dist_x, dist_y;
+        bx = this.reference_bounds.x1;
+        by = this.reference_bounds.y1;
+        bw = this.reference_bounds.x2 - bx;
+        bh = this.reference_bounds.y2 - by;
+
+        dist_x = dist.sx;
+        dist_y = dist.sy;
+
+        for (var i = 0; i < layers.selected.length; i++) {
+            var obj = layers.selected[i].render_object;
+
+            sx1 = normalize(obj.store.x, bx, bx+bw);
+            sy1 = normalize(obj.store.y, by, by+bh);
+            sx2 = normalize(obj.store.x + obj.store.w, bx, bx+bw);
+            sy2 = normalize(obj.store.y + obj.store.h, by, by+bh);
+
+            var x1 = obj.store.x + dist_x * sx1;
+            var y1 = obj.store.y + dist_y * sy1;
+            var x2 = obj.store.x + obj.store.w + (dist_x * sx2);
+            var y2 = obj.store.y + obj.store.h + (dist_y * sy2);
+
+            var nx = x1;
+            var ny = y1;
+            var nw = x2 - x1;
+            var nh = y2 - y1;
+            if (nw < 0) { nx = x2; nw = Math.abs(nw); }
+            if (nh < 0) { ny = y2; nh = Math.abs(nh); }
+
+            obj.move(nx, ny);
+            obj.resize(nw, nh);
+        }
+
+        this.refreshSelection();
     }
 
     refresh() {
@@ -1617,7 +1746,7 @@ class layerManager {
             }
             layer.select();
             this.selected.push(layer);
-            console.log(this.selected);
+            //console.log(this.selected);
         }
         grid.refreshSelection();
     }
@@ -1669,6 +1798,28 @@ class layerManager {
             win.move(win.x + move_x, win.y + move_y);
             grid.refreshSelection();
         }
+    }
+
+    windowsInBox(x1, y1, x2, y2) {
+        var windows = [];
+        for (var i = 0; i < this.mz_windows.length; i++) {
+            if (!this.mz_windows[i].visible) { continue; }
+            var wx1 = this.mz_windows[i].x;
+            var wx2 = this.mz_windows[i].x + this.mz_windows[i].width;
+            var wy1 = this.mz_windows[i].y;
+            var wy2 = this.mz_windows[i].y + this.mz_windows[i].height;
+            //console.log(mouse_x, mouse_y);
+            if (x1 > wx1 && x1 < wx2 && y2 > wy1 && y1 < wy1) { windows.push(this.mz_windows[i]); continue; }
+            if (x1 > wx1 && x1 < wx2 && y2 < wy2 && y1 > wy2) { windows.push(this.mz_windows[i]); continue; }
+            if (y1 > wy1 && y1 < wy2 && x2 > wx1 && x1 < wx1) { windows.push(this.mz_windows[i]); continue; }
+            if (y1 > wy1 && y1 < wy2 && x2 < wx2 && x1 > wx2) { windows.push(this.mz_windows[i]); continue; }
+
+            if (x2 < wx2 && y2 < wy2 && x1 > wx2 && y1 > wy2) { windows.push(this.mz_windows[i]); continue; }
+            if (x2 < wx2 && y2 > wy1 && x1 > wx2 && y1 < wy2) { windows.push(this.mz_windows[i]); continue; }
+            if (x2 > wx1 && y2 < wy2 && x1 < wx1 && y1 > wy2) { windows.push(this.mz_windows[i]); continue; }
+            if (x2 > wx1 && y2 > wy1 && x1 < wx1 && y1 < wy2) { windows.push(this.mz_windows[i]); continue; }
+        }
+        return windows;
     }
 }
 // ------------------------------------------------------------
@@ -2095,10 +2246,11 @@ class MZWindow {
         this.y = 0;
         this.off_x = 0;
         this.off_y = 0;
-        this.previous_x = 0;
-        this.previous_y = 0;
-        this.previous_w = 0;
-        this.previous_h = 0;
+        //this.previous_x = 0;
+        //this.previous_y = 0;
+        //this.previous_w = 0;
+        //this.previous_h = 0;
+        this.store = { x: 0, y: 0, w: 0, h: 0 }
         this.width = 0;
         this.height = 0;
         this.skin = null;
