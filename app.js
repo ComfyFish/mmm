@@ -384,6 +384,7 @@ function shiftRelease() {
 
 function deletePress() {
     // Delete me, delete me :)
+    layers.deleteSelected();
 }
 
 // Nudge layers
@@ -447,6 +448,7 @@ function mbLeftPress() {
 
         // General moving functions
         var obj = layers.mouseInObject(input.mouse_pos.x, input.mouse_pos.y);
+        console.log(obj);
         if (obj) {
             if (action.checkMod(MOD.CTRL) || action.checkMod(MOD.SHFT)) {
                 layers.toggleSelect(obj.parent_layer);
@@ -653,7 +655,13 @@ class actionSystem {
 // Grid System: 
 //   Pixi-related rendering of the grid and various selection
 //   control handles in pixi
+//
+//   Selection handles are generated like this:
+//   0 1 2
+//   3   4
+//   5 6 7
 // ------------------------------------------------------------
+
 class gridSystem {
     constructor() {
         this.initialize(...arguments);
@@ -828,43 +836,11 @@ class gridSystem {
     storeBoundsFromHandle() {
         this.reference_bounds.x1 = this.handle[this.handle_hover].position.x;
         this.reference_bounds.y1 = this.handle[this.handle_hover].position.y;
+        this.reference_bounds.x2 = this.handle[7-this.handle_hover].position.x;
+        this.reference_bounds.y2 = this.handle[7-this.handle_hover].position.y;
+
         this.handle_offset.x = input.mouse_pos.sx - this.reference_bounds.x1;
         this.handle_offset.y = input.mouse_pos.sy - this.reference_bounds.y1;
-
-        switch (grid.handle_hover) {
-            case 0:
-                this.reference_bounds.x2 = this.handle[7].position.x;
-                this.reference_bounds.y2 = this.handle[7].position.y;
-                break;
-            case 1:
-                this.reference_bounds.x2 = this.handle[this.handle_hover].position.x;
-                this.reference_bounds.y2 = this.handle[6].position.y;
-                break;
-            case 2:
-                this.reference_bounds.x2 = this.handle[5].position.x;
-                this.reference_bounds.y2 = this.handle[5].position.y;
-                break;
-            case 3:
-                this.reference_bounds.x2 = this.handle[4].position.x;
-                this.reference_bounds.y2 = this.handle[this.handle_hover].position.y;
-                break;
-            case 4:
-                this.reference_bounds.x2 = this.handle[3].position.x;
-                this.reference_bounds.y2 = this.handle[this.handle_hover].position.y;
-                break;
-            case 5:
-                this.reference_bounds.x2 = this.handle[2].position.x;
-                this.reference_bounds.y2 = this.handle[2].position.y;
-                break;
-            case 6:
-                this.reference_bounds.x2 = this.handle[this.handle_hover].position.x;
-                this.reference_bounds.y2 = this.handle[1].position.y;
-                break;
-            case 7:
-                this.reference_bounds.x2 = this.handle[0].position.x;
-                this.reference_bounds.y2 = this.handle[0].position.y;
-                break;
-        }
 
         for (var i = 0; i < layers.selected.length; i++) {
             var obj = layers.selected[i].render_object;
@@ -1669,7 +1645,7 @@ class layerManager {
     initialize() {
         this.scenes = [];
         this.layers = [];
-        this.mz_windows = [];
+        this.objects = [];
         this.selected = [];
         this.active_scene = null;
     }
@@ -1685,8 +1661,9 @@ class layerManager {
     newWindowLayer() {
         var renderObj = new MZWindow();
         //renderObj.move(x, y);
-        this.mz_windows.push(renderObj);
+        this.objects.push(renderObj);
         var win = new layerWindow();
+        this.layers.push(win);
         win.setRenderObject(renderObj);
         this.select(win);
         panels.scrollToLayer(win);
@@ -1759,6 +1736,59 @@ class layerManager {
         return ui.getElement(this.active_scene.layer_contents);
     }
 
+    getSceneIndex(scene) {
+        for (var i = 0; i < this.scenes.length; i++) {
+            if (this.scenes[i] == scene) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    getLayerIndex(layer) {
+        for (var i = 0; i < this.layers.length; i++) {
+            if (this.layers[i] == layer) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    getObjectIndex(obj) {
+        for (var i = 0; i < this.objects.length; i++) {
+            if (this.objects[i] == obj) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    removeScene(scene) {
+        var index = this.getSceneIndex(scene);
+        this.scenes[index].deleteLayer();
+        this.scenes.splice(index, 1);
+    }
+
+    removeLayer(layer) {
+        var index = this.getLayerIndex(layer);
+        //console.log(this.layers[index])
+        this.layers[index].deleteLayer();
+        this.layers.splice(index, 1);
+    }
+
+    removeObject(obj) {
+        var index = this.getObjectIndex(obj);
+        this.objects.splice(index, 1);
+    }
+
+    deleteSelected() {
+        for (var i = 0; i < this.selected.length; i++) {
+            this.removeLayer(this.selected[i]);
+        }
+        this.deselectAllLayers();
+        grid.refreshSelection();
+    }
+    /*
     getAllLayers() {
         var check = [];
         this.layers = [];
@@ -1773,12 +1803,15 @@ class layerManager {
         }
         //console.log(this.layers);
     }
+        */
 
     mouseInObject(mouse_x, mouse_y) {
         //if (!mouseInStageArea()) { return; }
-        this.getAllLayers();
+        //this.getAllLayers();
+        console.log(this.layers);
         for (var i = 0; i < this.layers.length; i++) {
             var obj = this.layers[i].render_object;
+            console.log(obj);
             if (!obj) { continue; }
             if (!obj.visible) { continue; }
             var xx = obj.x + stage.x;
@@ -1802,22 +1835,22 @@ class layerManager {
 
     windowsInBox(x1, y1, x2, y2) {
         var windows = [];
-        for (var i = 0; i < this.mz_windows.length; i++) {
-            if (!this.mz_windows[i].visible) { continue; }
-            var wx1 = this.mz_windows[i].x;
-            var wx2 = this.mz_windows[i].x + this.mz_windows[i].width;
-            var wy1 = this.mz_windows[i].y;
-            var wy2 = this.mz_windows[i].y + this.mz_windows[i].height;
+        for (var i = 0; i < this.objects.length; i++) {
+            if (!this.objects[i].visible) { continue; }
+            var wx1 = this.objects[i].x;
+            var wx2 = this.objects[i].x + this.objects[i].width;
+            var wy1 = this.objects[i].y;
+            var wy2 = this.objects[i].y + this.objects[i].height;
             //console.log(mouse_x, mouse_y);
-            if (x1 > wx1 && x1 < wx2 && y2 > wy1 && y1 < wy1) { windows.push(this.mz_windows[i]); continue; }
-            if (x1 > wx1 && x1 < wx2 && y2 < wy2 && y1 > wy2) { windows.push(this.mz_windows[i]); continue; }
-            if (y1 > wy1 && y1 < wy2 && x2 > wx1 && x1 < wx1) { windows.push(this.mz_windows[i]); continue; }
-            if (y1 > wy1 && y1 < wy2 && x2 < wx2 && x1 > wx2) { windows.push(this.mz_windows[i]); continue; }
+            if (x1 > wx1 && x1 < wx2 && y2 > wy1 && y1 < wy1) { windows.push(this.objects[i]); continue; }
+            if (x1 > wx1 && x1 < wx2 && y2 < wy2 && y1 > wy2) { windows.push(this.objects[i]); continue; }
+            if (y1 > wy1 && y1 < wy2 && x2 > wx1 && x1 < wx1) { windows.push(this.objects[i]); continue; }
+            if (y1 > wy1 && y1 < wy2 && x2 < wx2 && x1 > wx2) { windows.push(this.objects[i]); continue; }
 
-            if (x2 < wx2 && y2 < wy2 && x1 > wx2 && y1 > wy2) { windows.push(this.mz_windows[i]); continue; }
-            if (x2 < wx2 && y2 > wy1 && x1 > wx2 && y1 < wy2) { windows.push(this.mz_windows[i]); continue; }
-            if (x2 > wx1 && y2 < wy2 && x1 < wx1 && y1 > wy2) { windows.push(this.mz_windows[i]); continue; }
-            if (x2 > wx1 && y2 > wy1 && x1 < wx1 && y1 < wy2) { windows.push(this.mz_windows[i]); continue; }
+            if (x2 < wx2 && y2 < wy2 && x1 > wx2 && y1 > wy2) { windows.push(this.objects[i]); continue; }
+            if (x2 < wx2 && y2 > wy1 && x1 > wx2 && y1 < wy2) { windows.push(this.objects[i]); continue; }
+            if (x2 > wx1 && y2 < wy2 && x1 < wx1 && y1 > wy2) { windows.push(this.objects[i]); continue; }
+            if (x2 > wx1 && y2 > wy1 && x1 < wx1 && y1 < wy2) { windows.push(this.objects[i]); continue; }
         }
         return windows;
     }
@@ -2052,6 +2085,18 @@ class layerBase {
             this.updateUI();
         }
     }
+
+    setRenderObject(render_object) {
+        this.render_object = render_object;
+        render_object.parent_layer = this;
+    }
+
+    deleteLayer() {
+        for (var i = 0; i < this.child_layers.length; i++) {
+            this.child_layers[i].deleteLayer();
+        }
+        ui.getElement(this.layer_elem).remove();
+    }
 }
 // ------------------------------------------------------------
 
@@ -2142,7 +2187,6 @@ class layerWindow extends layerBase {
         this.visible = true;
         this.locked = false;
 
-        this.render_object = null;
         this.scene_layer = layers.getScene();
         this.createUI(layers.getSceneContentsElem());
         layers.getScene().nest(this);
@@ -2227,9 +2271,9 @@ class layerWindow extends layerBase {
         }
     }
 
-    setRenderObject(render_object) {
-        this.render_object = render_object;
-        render_object.parent_layer = this;
+    deleteLayer() {
+        this.render_object.delete();
+        super.deleteLayer();
     }
 }
 
@@ -2282,15 +2326,19 @@ class MZWindow {
         this.drawBack();
     }
 
-    destroy() {
+    delete() {
         this.container.parent.removeChild(this.container);
         const options = { children: true, texture: true };
         this.container.destroy(this.container, options);
-        //for (var i = 0; i < mz_window.length; i++) {
-        //    if (mz_window[i] == this) {
-        //        mz_window.splice(i, 1);
-        //    }
-        //}
+
+        layers.removeObject(this);
+        /*
+        for (var i = 0; i < layers.objects.length; i++) {
+            if (layers.objects[i] == this) {
+                layers.objects.splice(i, 1);
+            }
+        }
+        */
     }
 
     drawBack() {
