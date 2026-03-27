@@ -311,6 +311,12 @@ class inputManager {
         this.registerPressFunction("a", keyPressTest);
         //this.registerHoldFunction("a", keyPressTest);
 
+        this.addKey("keyboard", "z");
+        this.registerPressFunction("z", zPressed);
+
+        this.addKey("keyboard", "y");
+        this.registerPressFunction("y", yPressed);
+
         this.key_ctrl = this.addKey("keyboard", "Control");
         //this.registerPressFunction("Control", ctrlPress);
         //this.registerReleaseFunction("Control", ctrlRelease);
@@ -361,6 +367,20 @@ function keyPressTest(key) {
     console.log("Key " + key + " pressed!");
     console.log("Mouse X: " + input.mouse_pos.x + " Mouse Y: " + input.mouse_pos.y);
     //layers.getAllLayers();
+}
+
+function zPressed() {
+    if (action.checkMod(MOD.CTRL)) {
+        console.log("UNDO ACTION");
+        action.undoAction();
+    }
+}
+
+function yPressed() {
+    if (action.checkMod(MOD.CTRL)) {
+        console.log("REDO ACTION");
+        action.redoAction();
+    }
 }
 
 // Modifier keys
@@ -562,6 +582,13 @@ function mbLeftRelease() {
             grid.refreshSelection();
             layer_id -= 1;
             window_layer_num -= 1;
+        } else {
+            action.getObj().x = mz_win.x;
+            action.getObj().y = mz_win.y;
+            action.getObj().w = mz_win.width;
+            action.getObj().h = mz_win.height;
+            action.storeAction();
+            //console.log(action.getObj());
         }
     }
     if (action.checkAction("selection_box")) {
@@ -594,6 +621,7 @@ class actionSystem {
         this.mod_flags = MOD.NONE;
         this.dragging  = false;
         this.history   = [];
+        this.redo      = [];
     }
 
     setAction(action) {
@@ -601,6 +629,10 @@ class actionSystem {
             this.clearAction();
         }
         this.action.name = action;
+    }
+
+    storeAction() {
+        this.action.store = true;
     }
 
     checkAction(action) {
@@ -614,6 +646,7 @@ class actionSystem {
     clearAction() {
         if (this.action.name != "" && this.action.store) {
             this.history.push(this.action);
+            this.redo = [];
         }
         this.action = {name:"", store:false, obj:null};
     }
@@ -652,7 +685,34 @@ class actionSystem {
     undoAction() {
         if (this.history.length > 0) {
             var act = this.history.pop();
-            // Undo the action and stuff
+            this.redo.push(act);
+
+            if (act.name == "window_draw") {
+                var obj = act.obj;
+                layers.removeLayer(obj.layer);
+                layers.deselectAllLayers();
+                grid.refreshSelection();
+                layer_id -= 1;
+                window_layer_num -= 1;
+            }
+        }
+    }
+
+    redoAction() {
+        if (this.redo.length > 0) {
+            var act = this.redo.pop();
+            //console.log(this.history);
+
+            if (act.name == "window_draw") {
+                var obj = act.obj;
+                var win_layer = layers.newWindowLayer();
+                win_layer.render_object.move(obj.x, obj.y);
+                win_layer.render_object.resize(obj.w, obj.h);
+                act.obj.layer = win_layer;
+                act.obj.win = win_layer.render_object;
+            }
+
+            this.history.push(act);
         }
     }
 }
