@@ -448,7 +448,6 @@ function mbLeftPress() {
 
         // General moving functions
         var obj = layers.mouseInObject(input.mouse_pos.x, input.mouse_pos.y);
-        console.log(obj);
         if (obj) {
             if (action.checkMod(MOD.CTRL) || action.checkMod(MOD.SHFT)) {
                 layers.toggleSelect(obj.parent_layer);
@@ -556,6 +555,14 @@ function mbLeftRelease() {
     }
     if (action.checkAction("window_draw")) {
         // Update the size of the window in action history for proper undo/redo
+        var mz_win = action.getObj().win;
+        if (mz_win.height < 20 || mz_win.width < 20) {
+            layers.removeLayer(mz_win.parent_layer);
+            layers.deselectAllLayers();
+            grid.refreshSelection();
+            layer_id -= 1;
+            window_layer_num -= 1;
+        }
     }
     if (action.checkAction("selection_box")) {
         grid.clearDragSelection();
@@ -1648,6 +1655,7 @@ class layerManager {
         this.objects = [];
         this.selected = [];
         this.active_scene = null;
+        this.last_selected = -1;
     }
 
     newSceneLayer() {
@@ -1698,6 +1706,7 @@ class layerManager {
             }
             this.deselectAllLayers();
             this.selected.push(layer);
+            this.last_selected = this.getLayerIndex(layer);
             layer.select();
             grid.refresh();
         }
@@ -1808,10 +1817,8 @@ class layerManager {
     mouseInObject(mouse_x, mouse_y) {
         //if (!mouseInStageArea()) { return; }
         //this.getAllLayers();
-        console.log(this.layers);
         for (var i = 0; i < this.layers.length; i++) {
             var obj = this.layers[i].render_object;
-            console.log(obj);
             if (!obj) { continue; }
             if (!obj.visible) { continue; }
             var xx = obj.x + stage.x;
@@ -1983,7 +1990,33 @@ class layerBase {
     mouseDownEvent(e) {
         var element_pos = ui.getElement(this.layer_elem).getBoundingClientRect();
         if (e.clientY > element_pos.top + this.height) { return; }
-        layers.select(this);
+        if (action.checkMod(MOD.CTRL)) {
+            layers.toggleSelect(this);
+            console.log("Why are you doing this? Eh?");
+            return;
+        }
+        if (action.checkMod(MOD.SHFT)) {
+            var last_selected = -1;
+            if (layers.selected.length > 0) {
+                last_selected = layers.selected[layers.selected.length-1];
+            } else {
+                layers.select(this);
+                return;
+            }
+            var start, end;
+            var index = layers.getLayerIndex(this);
+            var last_selected_index = layers.getLayerIndex(last_selected);
+            if (index < last_selected_index) { start = index; end = last_selected_index; }
+            else if (index > last_selected_index) { start = last_selected_index; end = index; }
+            layers.deselectAllLayers();
+            for (var i = start; i <= end; i++) {
+                layers.toggleSelect(layers.layers[i]);
+            }
+            //return;
+        }
+        if (!action.checkMod(MOD.SHFT) && ! action.checkMod(MOD.CTRL)) {
+            layers.select(this);
+        }
     }
 
     mouseUpEvent(e) {
