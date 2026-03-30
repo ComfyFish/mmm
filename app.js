@@ -98,6 +98,60 @@ class inputManager {
         this.mouse_pos = {x:0, y:0, sx:0, sy:0};
         this.click_pos = {x:0, y:0, sx:0, sy:0};
         this.store_pos = {x:0, y:0};
+
+        this.keystate = {};
+        this.keybinds = {
+            "Ctrl+Z" : "undo",
+            "Ctrl+Y" : "redo",
+            "Ctrl+Shift+Z" : "redo",
+
+            "A" : "select_move_tool",
+            "S" : "select_draw_tool"
+        };
+        this.keyactions = {
+            select_move_tool: () => select_move_tool(),
+            select_draw_tool: () => select_draw_tool()
+        };
+
+        // Generic key listeners to get overall keyboard state
+        window.addEventListener('keydown', (event) => {
+            if (event.repeat) return;
+            this.keystate[event.code] = true;
+
+            var keystr = this.getKeystring();
+            console.log(keystr);
+            var action_name = this.keybinds[keystr];
+            if (action_name && this.keyactions[action_name]) {
+                event.preventDefault();
+                this.keyactions[action_name]();
+            }
+        });
+
+        window.addEventListener('keyup', (event) => {
+            this.keystate[event.code] = false;
+        });
+    }
+
+    addKeybind(keystr, action) {
+        for (var key in this.keybinds) {
+            if (this.keybinds[key] == action) {
+                delete this.keybinds[key];
+            }
+        }
+
+        this.keybinds[keystr] = action;
+    }
+
+    getKeystring() {
+        return Object.keys(this.keystate).filter(key => this.keystate[key]).map(key => this.normalizeKey(key)).sort().join("+");
+    }
+
+    normalizeKey(code) {
+        if (code.startsWith("Control")) return "Ctrl";
+        if (code.startsWith("Shift")) return "Shift";
+        if (code.startsWith("Alt")) return "Alt";
+        if (code.startsWith("Key")) return code.slice(3);
+        return code;
     }
 
     addKey(type, value) {
