@@ -437,25 +437,6 @@ function yPressed() {
     }
 }
 
-// Modifier keys
-/*
-function ctrlPress() {
-    action.addMod(MOD.CTRL);
-}
-
-function ctrlRelease() {
-    action.removeMod(MOD.CTRL);
-}
-
-function shiftPress() {
-    action.addMod(MOD.SHFT);
-}
-
-function shiftRelease() {
-    action.removeMod(MOD.SHFT);
-}
-*/
-
 function deletePress() {
     // Delete me, delete me :)
     layers.deleteSelected();
@@ -2164,10 +2145,20 @@ class layerBase {
         }
 
         if (this.open) {
+            this.getContentHeight();
             ui.getElement(this.layer_elem).style.height = this.height + this.content_height + "px";
         } else {
             ui.getElement(this.layer_elem).style.height = this.height + "px";
         }
+    }
+
+    getContentHeight() {
+        var height = 0;
+        for (var i = 0; i < this.child_layers.length; i++) {
+            height += this.child_layers[i].height;
+            if (this.child_layers[i].open) { height += this.child_layers[i].content_height; }
+        }
+        this.content_height = height;
     }
 
     changeHeight(height) {
@@ -2199,8 +2190,8 @@ class layerBase {
     nest(layer) {
         this.child_layers.push(layer);
         layer.parent_layer = this;
-        this.content_height += layer.height;
-        if (layer.open) { this.content_height += layer.content_height; }
+        //this.content_height += layer.height;
+        //if (layer.open) { this.content_height += layer.content_height; }
         if (this.open) { 
             this.updateUI();
         }
@@ -2238,11 +2229,25 @@ class layerBase {
         render_object.parent_layer = this;
     }
 
+    findChildIndex(layer) {
+        for (var i = 0; i < this.child_layers.length; i++) {
+            if (this.child_layers[i] == layer) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     deleteLayer() {
         for (var i = 0; i < this.child_layers.length; i++) {
             this.child_layers[i].deleteLayer();
         }
         ui.getElement(this.layer_elem).remove();
+        var child_index = this.findChildIndex(this)
+        this.parent_layer.child_layers.splice(child_index, 1);
+        if (this.parent_layer) {
+            this.parent_layer.updateUI();
+        }
     }
 }
 // ------------------------------------------------------------
