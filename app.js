@@ -487,7 +487,13 @@ function mbLeftPress() {
         if (!mouseInStageArea()) { return; }
         action.setAction("window_draw");
         var win_layer = layers.newWindowLayer();
-        action.addObj({type:"win_create", layer:win_layer, win:win_layer.render_object, x:0, y:0, w:0, h:0});
+        action.addObj({
+            type:"win_create", 
+            layer:win_layer,
+            win:win_layer.render_object, 
+            scene:layers.active_scene, 
+            x:0, y:0, w:0, h:0
+        });
         win_layer.render_object.move(input.mouse_pos.sx, input.mouse_pos.sy);
     }
 
@@ -740,9 +746,12 @@ class actionSystem {
 
             if (act.name == "window_draw") {
                 var obj = act.obj;
+                layers.select(obj.scene);
+                //console.log(obj.scene);
                 var win_layer = layers.newWindowLayer();
                 win_layer.render_object.move(obj.x, obj.y);
                 win_layer.render_object.resize(obj.w, obj.h);
+                grid.refreshSelection();
                 act.obj.layer = win_layer;
                 act.obj.win = win_layer.render_object;
             }
