@@ -2247,12 +2247,28 @@ class layerBase {
         return -1;
     }
 
+    getAllLayers() {
+        var queue = [];
+        var layer_list = [];
+        this.child_layers.forEach(e => queue.push(e));
+
+        while (queue.length > 0) {
+            layer_list.push(queue[0]);
+            if (queue[0].child_layers.length > 0) {
+                queue[0].child_layers.forEach(e => queue.push(e));
+            }
+            queue.splice(0, 1);
+        }
+        //console.log(layer_list);
+        return layer_list;
+    }
+
     deleteLayer() {
         for (var i = 0; i < this.child_layers.length; i++) {
             this.child_layers[i].deleteLayer();
         }
         ui.getElement(this.layer_elem).remove();
-        var child_index = this.findChildIndex(this)
+        var child_index = this.parent_layer.findChildIndex(this);
         this.parent_layer.child_layers.splice(child_index, 1);
         if (this.parent_layer) {
             this.parent_layer.updateUI();
@@ -2309,11 +2325,27 @@ class layerScene extends layerBase {
     select() {
         super.select();
         ui.getElement(this.layer_edit).style.visibility = "visible";
+
+        var layers = this.getAllLayers();
+        for (var i = 0; i < layers.length; i++) {
+            if (layers[i].render_object != null) {
+                if (layers[i].visible) {
+                    layers[i].render_object.unhide();
+                }
+            }
+        }
     }
 
     deselect() {
         super.deselect();
         ui.getElement(this.layer_edit).style.visibility = "hidden";
+        var layers = this.getAllLayers();
+        for (var i = 0; i < layers.length; i++) {
+            if (layers[i].render_object != null) {
+                layers[i].render_object.hide();
+            }
+        }
+        console.log(layers);
     }
 }
 // ------------------------------------------------------------
