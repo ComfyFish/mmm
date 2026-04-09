@@ -780,6 +780,14 @@ class actionSystem {
                 act.obj.win = win_layer.render_object;
             }
 
+            if (act.name == "object_move") {
+                var obj = act.obj;
+                for (var i = 0; i < obj.layers.length; i++) {
+                    obj.layers[i].render_object.move(obj.end_pos[i].x, obj.end_pos[i].y);
+                }
+                grid.refreshSelection();
+            }
+
             this.history.push(act);
         }
     }
