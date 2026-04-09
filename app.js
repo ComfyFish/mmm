@@ -487,13 +487,7 @@ function mbLeftPress() {
         if (!mouseInStageArea()) { return; }
         action.setAction("window_draw");
         var win_layer = layers.newWindowLayer();
-        action.addObj({
-            type:"win_create", 
-            layer:win_layer,
-            win:win_layer.render_object, 
-            scene:layers.active_scene, 
-            x:0, y:0, w:0, h:0
-        });
+        action.addObj({ layer:win_layer, win:win_layer.render_object, scene:layers.active_scene, x:0, y:0, w:0, h:0 });
         win_layer.render_object.move(input.mouse_pos.sx, input.mouse_pos.sy);
     }
 
@@ -523,6 +517,7 @@ function mbLeftPress() {
                         win.setMouseOffset();
                     }
                     action.setAction("object_move");
+                    action.addObj({layers: layers.selected, start_pos: action.getSelectionPos()});
                 }
             }
         } else {
@@ -632,6 +627,13 @@ function mbLeftRelease() {
             //console.log(action.getObj());
         }
     }
+    if (action.checkAction("object_move")) {
+        if (action.dragging) {
+            var obj = action.getObj();
+            obj.end_pos = action.getSelectionPos();
+            action.storeAction();
+        }
+    }
     if (action.checkAction("selection_box")) {
         grid.clearDragSelection();
     }
@@ -684,10 +686,24 @@ class actionSystem {
         this.action.obj = obj;
     }
 
+    getLayerPos(layer) {
+        return {x: layer.render_object.x, y: layer.render_object.y, w: layer.render_object.width, h: layer.render_object.height}
+    }
+
+    getSelectionPos(){
+        var positions = [];
+        for(var i = 0; i < layers.selected.length; i++) {
+            positions.push(this.getLayerPos(layers.selected[i]));
+        }
+        //console.log(positions);
+        return positions;
+    }
+
     clearAction() {
         if (this.action.name != "" && this.action.store) {
             this.history.push(this.action);
             this.redo = [];
+            console.log(this.history);
         }
         this.action = {name:"", store:false, obj:null};
     }
@@ -735,6 +751,14 @@ class actionSystem {
                 grid.refreshSelection();
                 layer_id -= 1;
                 window_layer_num -= 1;
+            }
+
+            if (act.name == "object_move") {
+                var obj = act.obj;
+                for (var i = 0; i < obj.layers.length; i++) {
+                    obj.layers[i].render_object.move(obj.start_pos[i].x, obj.start_pos[i].y);
+                }
+                grid.refreshSelection();
             }
         }
     }
@@ -1759,7 +1783,6 @@ class layerManager {
         this.objects = [];
         this.selected = [];
         this.active_scene = null;
-        this.last_selected = -1;
     }
 
     newSceneLayer() {
@@ -1810,7 +1833,6 @@ class layerManager {
             }
             this.deselectAllLayers();
             this.selected.push(layer);
-            this.last_selected = this.getLayerIndex(layer);
             layer.select();
             grid.refresh();
         }
@@ -2268,9 +2290,9 @@ class layerBase {
             this.child_layers[i].deleteLayer();
         }
         ui.getElement(this.layer_elem).remove();
-        var child_index = this.parent_layer.findChildIndex(this);
-        this.parent_layer.child_layers.splice(child_index, 1);
         if (this.parent_layer) {
+            var child_index = this.parent_layer.findChildIndex(this);
+            this.parent_layer.child_layers.splice(child_index, 1);
             this.parent_layer.updateUI();
         }
     }
