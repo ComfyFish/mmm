@@ -109,6 +109,8 @@ class inputManager {
             "S" : "select_draw_tool"
         };
         this.keyactions = {
+            undo: () => action.undoAction(),
+            redo: () => action.redoAction(),
             select_move_tool: () => select_move_tool(),
             select_draw_tool: () => select_draw_tool()
         };
@@ -143,7 +145,23 @@ class inputManager {
     }
 
     getKeystring() {
-        return Object.keys(this.keystate).filter(key => this.keystate[key]).map(key => this.normalizeKey(key)).sort().join("+");
+        const priority = {
+            "Ctrl": 1,
+            "Shift": 2,
+            "Alt": 3
+        };
+
+        return Object.keys(this.keystate)
+        .filter(key => this.keystate[key])
+        .map(key => this.normalizeKey(key))
+        .sort((a, b) => {
+            const pa = priority[a] || 99;
+            const pb = priority[b] || 99;
+
+            if (pa !== pb) return pa - pb;
+            return a.localeCompare(b);
+        })
+        .join("+");
     }
 
     normalizeKey(code) {
@@ -361,15 +379,15 @@ class inputManager {
     }
 
     registerDefaultKeys() {
-        this.addKey("keyboard", "a");
-        this.registerPressFunction("a", keyPressTest);
+        //this.addKey("keyboard", "a");
+        //this.registerPressFunction("a", keyPressTest);
         //this.registerHoldFunction("a", keyPressTest);
 
-        this.addKey("keyboard", "z");
-        this.registerPressFunction("z", zPressed);
+        //this.addKey("keyboard", "z");
+        //this.registerPressFunction("z", zPressed);
 
-        this.addKey("keyboard", "y");
-        this.registerPressFunction("y", yPressed);
+        //this.addKey("keyboard", "y");
+        //this.registerPressFunction("y", yPressed);
 
         this.key_ctrl = this.addKey("keyboard", "Control");
         //this.registerPressFunction("Control", ctrlPress);
@@ -414,26 +432,6 @@ function resizeHandleHoverCheck() {
     if (action.noAction() && layers.selected.length > 0) {
         grid.handleHover(input.mouse_pos.x, input.mouse_pos.y);
         grid.setControlSprites();
-    }
-}
-
-function keyPressTest(key) {
-    console.log("Key " + key + " pressed!");
-    console.log("Mouse X: " + input.mouse_pos.x + " Mouse Y: " + input.mouse_pos.y);
-    //layers.getAllLayers();
-}
-
-function zPressed() {
-    if (action.checkMod(MOD.CTRL)) {
-        console.log("UNDO ACTION");
-        action.undoAction();
-    }
-}
-
-function yPressed() {
-    if (action.checkMod(MOD.CTRL)) {
-        console.log("REDO ACTION");
-        action.redoAction();
     }
 }
 
@@ -486,9 +484,10 @@ function mbLeftPress() {
     if (action.checkTool("draw_tool")) {
         if (!mouseInStageArea()) { return; }
         action.setAction("window_draw");
-        var win_layer = layers.newWindowLayer();
-        action.addObj({ layer:win_layer, win:win_layer.render_object, scene:layers.active_scene, x:0, y:0, w:0, h:0 });
-        win_layer.render_object.move(input.mouse_pos.sx, input.mouse_pos.sy);
+        var layer = layers.newWindowLayer();
+        var layer_index = layers.getLayerIndex(layer);
+        action.addObj({ index:layer_index, layer:layer, scene:layers.active_scene, x:0, y:0, w:0, h:0 });
+        layer.render_object.move(input.mouse_pos.sx, input.mouse_pos.sy);
     }
 
     // Move tool functions
@@ -517,7 +516,11 @@ function mbLeftPress() {
                         win.setMouseOffset();
                     }
                     action.setAction("object_move");
-                    action.addObj({layers: layers.selected, start_pos: action.getSelectionPos()});
+                    var layer_indexes = [];
+                    for (var i = 0; i < layers.selected.length; i++) {
+                        layer_indexes.push(layers.getLayerIndex(layers.selected[i]));
+                    }
+                    action.addObj({indexes: layer_indexes, layers: layers.selected, start_pos: action.getSelectionPos()});
                 }
             }
         } else {
@@ -546,7 +549,7 @@ function mbLeftHold() {
     if (action.checkAction("window_draw")) {
         var cp = input.getMouseClickPos();
         var mp = input.getMousePos();
-        var mz_win = action.getObj().win;
+        var mz_win = action.getObj().layer.render_object;
         if (mz_win) {
             var diff_x = mp.sx - cp.sx;
             var diff_y = mp.sy - cp.sy;
@@ -611,7 +614,7 @@ function mbLeftRelease() {
     }
     if (action.checkAction("window_draw")) {
         // Update the size of the window in action history for proper undo/redo
-        var mz_win = action.getObj().win;
+        var mz_win = action.getObj().layer.render_object;
         if (mz_win.height < 20 || mz_win.width < 20) {
             layers.removeLayer(mz_win.parent_layer);
             layers.deselectAllLayers();
@@ -777,13 +780,13 @@ class actionSystem {
                 win_layer.render_object.resize(obj.w, obj.h);
                 grid.refreshSelection();
                 act.obj.layer = win_layer;
-                act.obj.win = win_layer.render_object;
+                //act.obj.win = win_layer.render_object;
             }
 
             if (act.name == "object_move") {
                 var obj = act.obj;
-                for (var i = 0; i < obj.layers.length; i++) {
-                    obj.layers[i].render_object.move(obj.end_pos[i].x, obj.end_pos[i].y);
+                for (var i = 0; i < obj.indexes.length; i++) {
+                    layers.layers[obj.indexes[i]].render_object.move(obj.end_pos[i].x, obj.end_pos[i].y);
                 }
                 grid.refreshSelection();
             }
